@@ -19,6 +19,11 @@ typedef i32 b32;
 typedef float  f32;
 typedef double f64;
 
+#define STATIC_ASSERT(c, label) typedef u8 static_assert_##label [(c) ? 1 : -1]
+
+STATIC_ASSERT(sizeof(f32) == 4, f32_size);
+STATIC_ASSERT(sizeof(f64) == 8, f64_size);
+
 #if defined(_WIN32)
 #   define PLATFORM_WIN32
 #elif defined(__linux__)

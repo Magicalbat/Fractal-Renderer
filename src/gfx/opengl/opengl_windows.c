@@ -173,6 +173,8 @@ gfx_window* gfx_win_create(mg_arena* arena, u32 width, u32 height, string8 title
 
     win->backend->gl_context = wglCreateContextAttribsARB(win->backend->device_context, NULL, context_attribs);
 
+    wglMakeCurrent(win->backend->device_context, win->backend->gl_context);
+
     #define X(ret, name, args) name = (gl_##name##_func)w32_gl_load(#name);
     #   include "opengl_funcs.h"
     #undef X
