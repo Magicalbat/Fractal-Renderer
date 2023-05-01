@@ -1,0 +1,6 @@
+bin
+bin-int
+.cache
+compile_commands.json
+Makefile
+**.bat
