@@ -1,9 +1,14 @@
 #include "opengl_helpers.h"
 
-#define UNICODE
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-#include <GL/gl.h>
+#if defined(PLATFORM_WINDOWS)
+#    define UNICODE
+#    define WIN32_LEAN_AND_MEAN
+#    include <Windows.h>
+#    include <GL/gl.h>
+#elif defined(PLATFORM_LINUX)
+#    include <GL/gl.h>
+#endif
+
 #include "opengl.h"
 
 u32 glh_create_shader(const char* vertex_source, const char* fragment_source) {

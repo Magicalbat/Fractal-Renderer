@@ -1,6 +1,10 @@
 bin
 bin-int
 .cache
+.ccls
+.ccls-cache
+.replit
+replit.nix
 compile_commands.json
 Makefile
 **.bat

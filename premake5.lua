@@ -30,6 +30,11 @@ project "Fractal-Renderer"
     filter { "action:*gmake*" } 
         buildoptions { "-msse4.1 -mpclmul" }
 
+    filter "system:linux"
+        links {
+            "m", "X11", "GL", "GLX"
+        }
+
     filter { "system:windows", "action:*gmake*", "configurations:debug" }
         linkoptions { "-g" }
 

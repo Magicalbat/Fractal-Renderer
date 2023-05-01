@@ -639,11 +639,11 @@ MGA_FUNC_DEF void mga_temp_end(mga_temp temp) {
 #   define MGA_SCRATCH_COUNT 2
 #endif
 
-MGA_THREAD_VAR static mga_desc _mga_scratch_desc = {
+static MGA_THREAD_VAR  mga_desc _mga_scratch_desc = {
     .desired_max_size = MGA_MiB(64),
     .desired_block_size = MGA_KiB(128)
 };
-MGA_THREAD_VAR static mg_arena* _mga_scratch_arenas[MGA_SCRATCH_COUNT] = { 0 };
+static MGA_THREAD_VAR mg_arena* _mga_scratch_arenas[MGA_SCRATCH_COUNT] = { 0 };
 
 MGA_FUNC_DEF void mga_scratch_set_desc(mga_desc* desc) {
     if (_mga_scratch_arenas[0] == NULL)

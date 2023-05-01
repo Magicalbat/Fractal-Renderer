@@ -1,6 +1,8 @@
 #ifndef BASE_STR_H
 #define BASE_STR_H
 
+#include <stdarg.h>
+
 #include "base_defs.h"
 #include "mg_arena/mg_arena.h"
 

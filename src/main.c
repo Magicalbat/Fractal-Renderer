@@ -3,17 +3,23 @@
 #include "base/base.h"
 #include "gfx/gfx.h"
 
-#define UNICODE
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-#include <GL/gl.h>
+#if defined(PLATFORM_WINDOWS)
+#    define UNICODE
+#    define WIN32_LEAN_AND_MEAN
+#    include <Windows.h>
+#    include <GL/gl.h>
+#elif defined(PLATFORM_LINUX)
+#    include <GL/gl.h>
+#endif
+
 #include "gfx/opengl/opengl.h"
 #include "gfx/opengl/opengl_helpers.h"
 
 #include "fpng/fpng.h"
 
-#define WIDTH 1280
-#define HEIGHT 720
+#define WIN_SCALE 1
+#define WIDTH (u32)(320 * WIN_SCALE)
+#define HEIGHT (u32)(180 * WIN_SCALE)
 
 typedef struct {
     f32 r, i;
@@ -164,8 +170,6 @@ int main(void) {
         glDisableVertexAttribArray(1);
 
         gfx_win_swap_buffers(win);
-
-        Sleep(16);
     }
 
     glDeleteProgram(shader);

@@ -1,3 +1,5 @@
+#ifdef _WIN32
+
 #include "gfx/gfx.h"
 
 #include "opengl.h"
@@ -248,3 +250,5 @@ static void* w32_gl_load(const char* name) {
     }
     return p;
 }
+
+#endif // _WIN32
