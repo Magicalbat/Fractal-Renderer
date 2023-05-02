@@ -4,6 +4,7 @@
 #include "opengl.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -115,7 +116,7 @@ gfx_window* gfx_win_create(mg_arena* arena, u32 width, u32 height, string8 title
         .background_pixel = WhitePixel(win->backend->display, win->backend->screen),
         .override_redirect = True,
         .colormap = XCreateColormap(win->backend->display, RootWindow(win->backend->display, win->backend->screen), visual->visual, AllocNone),
-        .event_mask = ExposureMask // | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | KeyPressMask | KeyReleaseMask
+        .event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask // | KeyPressMask | KeyReleaseMask
     };
 
     win->backend->window = XCreateWindow(
@@ -165,6 +166,8 @@ void gfx_win_destroy(gfx_window* win) {
 }
 
 void gfx_win_process_events(gfx_window* win) {
+    memcpy(win->prev_mouse_buttons, win->mouse_buttons, sizeof(win->prev_mouse_buttons));
+    
     while (XPending(win->backend->display)) {
         XEvent e = { 0 };
         XNextEvent(win->backend->display, &e);
@@ -174,6 +177,16 @@ void gfx_win_process_events(gfx_window* win) {
                 glViewport(0, 0, e.xexpose.width, e.xexpose.height);
                 win->width = e.xexpose.width;
                 win->height = e.xexpose.height;
+            } break;
+            case ButtonPress: {
+                win->mouse_buttons[e.xbutton.button - 1] = true;
+            } break;
+            case ButtonRelease: {
+                win->mouse_buttons[e.xbutton.button - 1] = false;
+            } break;
+            case MotionNotify: {
+                win->mouse_pos.x = (f32)e.xmotion.x;
+                win->mouse_pos.y = (f32)e.xmotion.y;
             } break;
             case ClientMessage: {
                 if ((i64)e.xclient.data.l[0] == (i64)win->backend->del_atom) {

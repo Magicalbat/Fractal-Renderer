@@ -2,6 +2,7 @@
 #define GFX_H
 
 #include "base/base.h"
+#include "math/math_vec.h"
 
 typedef struct _gfx_win_backend _gfx_win_backend;
 
@@ -10,6 +11,10 @@ typedef struct {
     u32 width, height;
 
     b32 should_close;
+
+    vec2 mouse_pos;
+    b8 mouse_buttons[5];
+    b8 prev_mouse_buttons[5];
 
     _gfx_win_backend* backend;
 } gfx_window;

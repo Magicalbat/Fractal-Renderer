@@ -8,3 +8,4 @@ replit.nix
 compile_commands.json
 Makefile
 **.bat
+**.png

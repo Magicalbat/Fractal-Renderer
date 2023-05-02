@@ -10,6 +10,7 @@
 #    include <GL/gl.h>
 #elif defined(PLATFORM_LINUX)
 #    include <GL/gl.h>
+#    include <unistd.h>
 #endif
 
 #include "gfx/opengl/opengl.h"
@@ -21,8 +22,11 @@
 #define WIDTH (u32)(320 * WIN_SCALE)
 #define HEIGHT (u32)(180 * WIN_SCALE)
 
+#define IMG_WIDTH 1920
+#define IMG_HEIGHT 1080
+
 typedef struct {
-    f32 r, i;
+    f64 r, i;
 } complex;
 
 complex cx_add(complex a, complex b) {
@@ -42,13 +46,44 @@ typedef struct {
     u8 r, g, b, a;
 } pixel8;
 
+void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex complex_dim, complex complex_center, u32 iterations) {
+    for (u32 y = 0; y < img_height; y++) {
+        for (u32 x = 0; x < img_width; x++) {
+            complex z = { 0 };
+            complex c = {
+                (((f64)x / (f64)img_width) - 0.5) * complex_dim.r + complex_center.r,
+                (((f64)y / (f64)img_height) - 0.5) * complex_dim.i + complex_center.i
+            };
+
+            f32 n = (f32)iterations - 1.0;
+
+            for (u32 i = 0; i < iterations; i++) {
+                z = cx_add(cx_mul(z, z), c);
+
+                if (z.r * z.r + z.i * z.i > 4.0) {
+                    n = (f32)i;
+                    break;
+                }
+            }
+
+            u32 j = x + y * img_width;
+            if (n == (f64)iterations - 1.0) {
+                out[j] = (pixel8){ 0, 0, 0, 255 };
+            } else {
+                u32 col = (u32)((n / iterations) * 254.0) + 1;
+                out[j] = (pixel8){ col, col, col, 255 };
+            }
+        }
+    }
+}
+
 void mga_err(mga_error err) {
     printf("MGA ERROR %d: %s", err.code, err.msg);
 }
 
 int main(void) {
     mga_desc desc = {
-        .desired_max_size = MGA_MiB(8),
+        .desired_max_size = MGA_MiB(16),
         .desired_block_size = MGA_KiB(256),
         .error_callback = mga_err
     };
@@ -58,8 +93,8 @@ int main(void) {
 
     gfx_window* win = gfx_win_create(perm_arena, WIDTH, HEIGHT, STR8("Fractal Renderer"));
 
-    pixel8* screen = MGA_PUSH_ZERO_ARRAY(perm_arena, pixel8, WIDTH * HEIGHT);
-    for (u32 i = 0; i < WIDTH * HEIGHT; i++) {
+    pixel8* screen = MGA_PUSH_ZERO_ARRAY(perm_arena, pixel8, IMG_WIDTH * IMG_HEIGHT);
+    for (u32 i = 0; i < IMG_WIDTH * IMG_HEIGHT; i++) {
         screen[i].a = 255;
     }
 
@@ -74,11 +109,16 @@ int main(void) {
         "}";
     const char* frag_source = ""
         "#version 330 core\n"
+        "#define PI 3.14159265359\n"
         "layout (location = 0) out vec4 out_col;"
         "uniform sampler2D u_texture;"
         "in vec2 uv;"
         "void main() {"
-        "   out_col = texture(u_texture, uv);"
+        "    vec4 sample = texture(u_texture, uv);"
+        "    if (sample.xyz == vec3(0)) {"
+        "        out_col = vec4(0, 0, 0, 1);"
+        "    } else"
+        "        out_col = vec4(0, sin(sample.r * PI) * 0.5 + 0.5, sin(PI + sample.r * PI) * 0.5 + 0.5, 1);"
         "}";
 
     f32 verts[4 * 6] = {
@@ -111,42 +151,96 @@ int main(void) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, WIDTH, HEIGHT);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, IMG_WIDTH, IMG_HEIGHT);
 
     glClearColor(0.45f, 0.65f, 0.77f, 1.0f);
 
-    u32 iterations = 128;
-    for (u32 x = 0; x < WIDTH; x++) {
-        for (u32 y = 0; y < HEIGHT; y++) {
-            complex z = { 0 };
-            complex c = {
-                ((f32)x / (f32)WIDTH) * 4.0f - 2.0f,
-                ((f32)y / (f32)HEIGHT) * 4.0f - 2.0f
-            };
 
-            f32 n = (f32)iterations - 1.0f;
+    /*fpng_img img = {
+        .channels = 4,
+        .width = IMG_WIDTH,
+        .height = IMG_HEIGHT,
+        .data = (u8*)screen
+    };
+    string8 out = { 0 };
+    fpng_encode_image_to_memory(perm_arena, &img, &out, 0);
 
-            for (u32 i = 0; i < iterations; i++) {
-                z = cx_add(cx_mul(z, z), c);
+    FILE* f = fopen("out.png", "wb");
+    fwrite(out.str, 1, out.size, f);
+    fclose(f);*/
 
-                if (z.r * z.r + z.i * z.i > 4.0f) {
-                    n = (f32)i;
-                    break;
-                }
-            }
+    complex complex_dim = { 4.0, 4.0 * 9.0 / 16.0 };
+    complex complex_center = { 0, 0 };
+    vec2 init_pos = { 0 };
 
-            u32 j = x + y * WIDTH;
-            //if (n == (f32)iterations - 1.0f) {
-            //    screen[j] = (pixel8){ 0, 0, 0, 1 };
-            //} else {
-                u32 col = (u32)((n / iterations) * 255.0f);
-                screen[j] = (pixel8){ col, col, col, 1 };
-            //}
-        }
-    }
+    render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 32);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
 
     while (!win->should_close) {
         gfx_win_process_events(win);
+
+        if (win->mouse_buttons[0] && !win->prev_mouse_buttons[0]) {
+            init_pos = win->mouse_pos;
+        }
+
+        if (!win->mouse_buttons[0] && win->prev_mouse_buttons[0]) {
+            printf("dim: %f %f, center: %f %f\n", complex_dim.r, complex_dim.i, complex_center.r, complex_center.i);
+            
+            // -0.5 -> 0.5
+            complex norm_center = {
+                (((init_pos.x + win->mouse_pos.x) * 0.5) / win->width) - 0.5,
+                (((init_pos.y + win->mouse_pos.y) * 0.5) / win->height) - 0.5
+            };
+            complex_center.r += norm_center.r * complex_dim.r;
+            complex_center.i -= norm_center.i * complex_dim.i;
+
+            
+            complex_dim.r *= -((init_pos.x - win->mouse_pos.x) / win->width);
+            complex_dim.i = complex_dim.r * (9.0f / 16.0f);//-((init_pos.y - win->mouse_pos.y) / win->height);
+            
+            printf("dim: %f %f, center: %f %f\n\n", complex_dim.r, complex_dim.i, complex_center.r, complex_center.i);
+
+            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 256);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
+        }
+
+        if (win->mouse_buttons[2] && !win->prev_mouse_buttons[2]) {
+            printf("saving images\n");
+
+            mga_temp temp = mga_temp_begin(perm_arena);
+            
+            u32 i = 0;
+            b32 done = false;
+            while (!done) {
+                if (complex_dim.r >= 4.0f)
+                    done = true;
+                
+                render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 512);
+                complex_dim.r *= 2.5;
+                complex_dim.i *= 2.5;
+                
+                fpng_img img = {
+                    .channels = 4,
+                    .width = IMG_WIDTH,
+                    .height = IMG_HEIGHT,
+                    .data = (u8*)screen
+                };
+                string8 out = { 0 };
+                fpng_encode_image_to_memory(perm_arena, &img, &out, 0);
+
+                char file_path[256] = { 0 };
+                sprintf(file_path, "out/img_%.4u.png", i);
+                i++;
+                
+                FILE* f = fopen(file_path, "wb");
+                fwrite(out.str, 1, out.size, f);
+                fclose(f);
+
+                mga_temp_end(temp);
+                
+                printf("image %d, dim: %f %f\n", i - 1, complex_dim.r, complex_dim.i);
+            }
+        }
 
         gfx_win_clear(win);
 
@@ -156,7 +250,6 @@ int main(void) {
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
 
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
@@ -170,8 +263,13 @@ int main(void) {
         glDisableVertexAttribArray(1);
 
         gfx_win_swap_buffers(win);
+
+        #if defined(PLATFORM_LINUX)
+        usleep(16000);
+        #endif
     }
 
+    glDeleteTextures(1, &texture);
     glDeleteProgram(shader);
     glDeleteBuffers(1, &vertex_buffer);
     glDeleteVertexArrays(1, &vertex_array);
