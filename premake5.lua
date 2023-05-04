@@ -32,7 +32,7 @@ project "Fractal-Renderer"
 
     filter "system:linux"
         links {
-            "m", "X11", "GL", "GLX"
+            "m", "X11", "GL", "GLX", "pthread"
         }
 
     filter { "system:windows", "action:*gmake*", "configurations:debug" }

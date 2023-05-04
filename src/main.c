@@ -19,6 +19,8 @@
 
 #include "fpng/fpng.h"
 
+#include <threads.h>
+
 #define WIN_SCALE 1
 #define WIDTH (u32)(320 * WIN_SCALE)
 #define HEIGHT (u32)(180 * WIN_SCALE)
@@ -47,18 +49,31 @@ typedef struct {
     u8 r, g, b, a;
 } pixel8;
 
-void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex complex_dim, complex complex_center, u32 iterations) {
-    for (u32 y = 0; y < img_height; y++) {
-        for (u32 x = 0; x < img_width; x++) {
+typedef struct {
+    pixel8* out;
+    u32 img_width;
+    u32 img_height;
+    u32 start_y;
+    u32 height;
+    complex complex_dim;
+    complex complex_center;
+    u32 iterations;
+} mandelbrot_args;
+
+int render_mandelbrot_section(void* void_args) {
+    mandelbrot_args* args = (mandelbrot_args*)void_args;
+    
+    for (u32 y = args->start_y; y < args->start_y + args->height; y++) {
+        for (u32 x = 0; x < args->img_width; x++) {
             complex z = { 0 };
             complex c = {
-                (((f64)x / (f64)img_width) - 0.5) * complex_dim.r + complex_center.r,
-                (((f64)y / (f64)img_height) - 0.5) * complex_dim.i + complex_center.i
+                (((f64)x / (f64)args->img_width) - 0.5) * args->complex_dim.r + args->complex_center.r,
+                (((f64)y / (f64)args->img_height) - 0.5) * args->complex_dim.i + args->complex_center.i
             };
 
-            f32 n = (f32)iterations - 1.0;
+            f32 n = (f32)args->iterations - 1.0;
 
-            for (u32 i = 0; i < iterations; i++) {
+            for (u32 i = 0; i < args->iterations; i++) {
                 z = cx_add(cx_mul(z, z), c);
 
                 if (z.r * z.r + z.i * z.i > 4.0) {
@@ -67,21 +82,53 @@ void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex compl
                 }
             }
 
-            u32 j = x + y * img_width;
-            if (n == (f32)iterations - 1.0) {
-                out[j] = (pixel8){ 0, 0, 0, 255 };
+            u32 j = x + y * args->img_width;
+            if (n == (f32)args->iterations - 1.0) {
+                args->out[j] = (pixel8){ 0, 0, 0, 255 };
             } else {
-                out[j] = (pixel8){
+                args->out[j] = (pixel8){
                     .r = (u8)((sinf(0.1 * n) * 0.5f + 0.5f) * 255.0f),
                     .g = (u8)((sinf(0.1 * n + 4.188) * 0.5f + 0.5f) * 255.0f),
                     .b = (u8)((sinf(0.1 * n + 2.904) * 0.5f + 0.5f) * 255.0f),
                     .a = 255
                 };
-                //u32 col = (u32)((n / iterations) * 254.0) + 1;
-                //out[j] = (pixel8){ col, col, col, 255 };
+                //u32 col = (u32)((n / args->iterations) * 254.0) + 1;
+                //args->out[j] = (pixel8){ col, col, col, 255 };
             }
         }
     }
+
+    return 0;
+}
+
+#define NUM_THREADS 8
+void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex complex_dim, complex complex_center, u32 iterations) {
+    mga_temp scratch = mga_scratch_get(NULL, 0);
+
+    thrd_t threads[NUM_THREADS];
+    u32 y_step = img_height / NUM_THREADS;
+    
+    for (u32 i = 0; i < NUM_THREADS; i++) {
+        mandelbrot_args* args = MGA_PUSH_ZERO_STRUCT(scratch.arena, mandelbrot_args);
+        *args = (mandelbrot_args){
+            .out = out,
+            .img_width = img_width,
+            .img_height = img_height,
+            .start_y = y_step * i,
+            .height = y_step,
+            .complex_dim = complex_dim,
+            .complex_center = complex_center,
+            .iterations = iterations
+        };
+        thrd_create(&threads[i], render_mandelbrot_section, args);
+        //render_mandelbrot_section(args);
+    }
+
+    for (u32 i = 0; i < NUM_THREADS; i++) {
+        thrd_join(threads[i], NULL);
+    }
+
+    mga_scratch_release(scratch);
 }
 
 void mga_err(mga_error err) {
@@ -167,7 +214,6 @@ int main(void) {
 
     glClearColor(0.45f, 0.65f, 0.77f, 1.0f);
 
-
     /*fpng_img img = {
         .channels = 4,
         .width = IMG_WIDTH,
@@ -184,8 +230,9 @@ int main(void) {
     complex complex_dim = { 4.0, 4.0 * 9.0 / 16.0 };
     complex complex_center = { 0, 0 };
     vec2 init_pos = { 0 };
+    u32 iterations = 64;
 
-    render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 32);
+    render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, iterations);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
 
     while (!win->should_close) {
@@ -196,8 +243,6 @@ int main(void) {
         }
 
         if (!win->mouse_buttons[0] && win->prev_mouse_buttons[0]) {
-            printf("dim: %f %f, center: %f %f\n", complex_dim.r, complex_dim.i, complex_center.r, complex_center.i);
-            
             // -0.5 -> 0.5
             complex norm_center = {
                 (((init_pos.x + win->mouse_pos.x) * 0.5) / win->width) - 0.5,
@@ -209,10 +254,12 @@ int main(void) {
             
             complex_dim.r *= -((init_pos.x - win->mouse_pos.x) / win->width);
             complex_dim.i = complex_dim.r * (9.0f / 16.0f);//-((init_pos.y - win->mouse_pos.y) / win->height);
-            
-            printf("dim: %f %f, center: %f %f\n\n", complex_dim.r, complex_dim.i, complex_center.r, complex_center.i);
 
-            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 256);
+            iterations += 64;
+            
+            printf("dim: %f %f, center: %f %f, iters: %u\n", complex_dim.r, complex_dim.i, complex_center.r, complex_center.i, iterations);
+
+            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, iterations);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
         }
 
@@ -228,8 +275,8 @@ int main(void) {
                     done = true;
                 
                 render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 512);
-                complex_dim.r *= 2.0;
-                complex_dim.i *= 2.0;
+                complex_dim.r *= 1.5;
+                complex_dim.i *= 1.5;
                 
                 fpng_img img = {
                     .channels = 4,
@@ -251,6 +298,18 @@ int main(void) {
                 mga_temp_end(temp);
                 
                 printf("image %d, dim: %f %f\n", i - 1, complex_dim.r, complex_dim.i);
+            }
+            i--;
+
+            char file1[256] = { 0 };
+            char file2[256] = { 0 };
+            for (u32 j = 0; j < i / 2 + 1; j++) {
+                sprintf(file1, "out/img_%.4u.png", j);
+                sprintf(file2, "out/img_%.4u.png", i - j);
+                
+                rename(file1, "out/temp.png");
+                rename(file2, file1);
+                rename("out/temp.png", file2);
             }
         }
 
