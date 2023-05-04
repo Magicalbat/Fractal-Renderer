@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 
 #include "base/base.h"
 #include "gfx/gfx.h"
@@ -67,11 +68,17 @@ void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex compl
             }
 
             u32 j = x + y * img_width;
-            if (n == (f64)iterations - 1.0) {
+            if (n == (f32)iterations - 1.0) {
                 out[j] = (pixel8){ 0, 0, 0, 255 };
             } else {
-                u32 col = (u32)((n / iterations) * 254.0) + 1;
-                out[j] = (pixel8){ col, col, col, 255 };
+                out[j] = (pixel8){
+                    .r = (u8)((sinf(0.1 * n) * 0.5f + 0.5f) * 255.0f),
+                    .g = (u8)((sinf(0.1 * n + 4.188) * 0.5f + 0.5f) * 255.0f),
+                    .b = (u8)((sinf(0.1 * n + 2.904) * 0.5f + 0.5f) * 255.0f),
+                    .a = 255
+                };
+                //u32 col = (u32)((n / iterations) * 254.0) + 1;
+                //out[j] = (pixel8){ col, col, col, 255 };
             }
         }
     }
@@ -115,20 +122,25 @@ int main(void) {
         "in vec2 uv;"
         "void main() {"
         "    vec4 sample = texture(u_texture, uv);"
-        "    if (sample.xyz == vec3(0)) {"
+        "    out_col = sample;"
+        /*"    if (sample.xyz == vec3(0)) {"
         "        out_col = vec4(0, 0, 0, 1);"
-        "    } else"
-        "        out_col = vec4(0, sin(sample.r * PI) * 0.5 + 0.5, sin(PI + sample.r * PI) * 0.5 + 0.5, 1);"
+        "    } else {"
+        "        out_col.r = sin(sample.r * PI) * 0.5 + 0.5;"
+        "        out_col.g = sin(sample.r * PI) * 0.5 + 0.5;"
+        "        out_col.b = sin(sample.r * PI) * 0.5 + 0.5;"
+        "        out_col.a = 1.0;"
+        "    }"*/
         "}";
 
     f32 verts[4 * 6] = {
-        -1.0f, -1.0f,   0.0f, 0.0f,
-        -1.0f,  1.0f,   0.0f, 1.0f,
-         1.0f,  1.0f,   1.0f, 1.0f,
+        -1.0f, -1.0f,   0.0f, 1.0f,
+        -1.0f,  1.0f,   0.0f, 0.0f,
+         1.0f,  1.0f,   1.0f, 0.0f,
 
-        -1.0f, -1.0f,   0.0f, 0.0f,
-         1.0f,  1.0f,   1.0f, 1.0f,
-         1.0f, -1.0f,   1.0f, 0.0f,
+        -1.0f, -1.0f,   0.0f, 1.0f,
+         1.0f,  1.0f,   1.0f, 0.0f,
+         1.0f, -1.0f,   1.0f, 1.0f,
     };
 
     u32 vertex_array = 0;
@@ -192,7 +204,7 @@ int main(void) {
                 (((init_pos.y + win->mouse_pos.y) * 0.5) / win->height) - 0.5
             };
             complex_center.r += norm_center.r * complex_dim.r;
-            complex_center.i -= norm_center.i * complex_dim.i;
+            complex_center.i += norm_center.i * complex_dim.i;
 
             
             complex_dim.r *= -((init_pos.x - win->mouse_pos.x) / win->width);
@@ -216,8 +228,8 @@ int main(void) {
                     done = true;
                 
                 render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 512);
-                complex_dim.r *= 2.5;
-                complex_dim.i *= 2.5;
+                complex_dim.r *= 2.0;
+                complex_dim.i *= 2.0;
                 
                 fpng_img img = {
                     .channels = 4,
