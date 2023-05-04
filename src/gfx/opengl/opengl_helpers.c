@@ -1,6 +1,6 @@
 #include "opengl_helpers.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_WIN32)
 #    define UNICODE
 #    define WIN32_LEAN_AND_MEAN
 #    include <Windows.h>

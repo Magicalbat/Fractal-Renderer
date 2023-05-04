@@ -4,7 +4,7 @@
 #include "base/base.h"
 #include "gfx/gfx.h"
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(PLATFORM_WIN32)
 #    define UNICODE
 #    define WIN32_LEAN_AND_MEAN
 #    include <Windows.h>
@@ -276,8 +276,10 @@ int main(void) {
 
         gfx_win_swap_buffers(win);
 
-        #if defined(PLATFORM_LINUX)
-        usleep(16000);
+        #if defined(PLATFORM_WIN32)
+            Sleep(16);
+        #elif defined(PLATFORM_LINUX)
+            usleep(16000);
         #endif
     }
 

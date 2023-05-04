@@ -199,7 +199,7 @@ void gfx_win_destroy(gfx_window* win) {
 }
 
 void gfx_win_process_events(gfx_window* win) {
-    UNUSED(win);
+    memcpy(win->prev_mouse_buttons, win->mouse_buttons, sizeof(win->prev_mouse_buttons));
 
     MSG msg = { 0 };
     while (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -224,6 +224,30 @@ static LRESULT CALLBACK w32_window_proc(HWND hWnd, UINT uMsg, WPARAM wParam, LPA
     gfx_window* win = GetPropW(hWnd, L"gfx_win");
     
     switch (uMsg) {
+        case WM_MOUSEMOVE: {
+            win->mouse_pos.x = (f32)((lParam) & 0xffff);
+            win->mouse_pos.y = (f32)((lParam >> 16) & 0xffff);
+        } break;
+
+        case WM_LBUTTONDOWN: {
+            win->mouse_buttons[0] = true;
+        } break;
+        case WM_LBUTTONUP: {
+            win->mouse_buttons[0] = false;
+        } break;
+        case WM_MBUTTONDOWN: {
+            win->mouse_buttons[1] = true;
+        } break;
+        case WM_MBUTTONUP: {
+            win->mouse_buttons[1] = false;
+        } break;
+        case WM_RBUTTONDOWN: {
+            win->mouse_buttons[2] = true;
+        } break;
+        case WM_RBUTTONUP: {
+            win->mouse_buttons[2] = false;
+        } break;
+
         case WM_SIZE: {
             u32 width = (u32)LOWORD(lParam);
             u32 height = (u32)HIWORD(lParam);
