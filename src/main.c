@@ -20,6 +20,7 @@
 #include "fpng/fpng.h"
 
 #include <threads.h>
+#include <time.h>
 
 #define WIN_SCALE 1
 #define WIDTH (u32)(320 * WIN_SCALE)
@@ -27,6 +28,16 @@
 
 #define IMG_WIDTH 1920
 #define IMG_HEIGHT 1080
+
+u64 time_us(void) {
+    struct timespec ts = { 0 };
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (u64)ts.tv_sec * 1e6 + (u64)ts.tv_nsec / 1e3;
+}
+
+typedef struct {
+    f64 x, y, w, h;
+} rect64;
 
 typedef struct {
     f64 r, i;
@@ -74,6 +85,7 @@ int render_mandelbrot_section(void* void_args) {
             f32 n = (f32)args->iterations - 1.0;
 
             for (u32 i = 0; i < args->iterations; i++) {
+                //z = (complex){ fabs(z.r), fabs(z.i) };
                 z = cx_add(cx_mul(z, z), c);
 
                 if (z.r * z.r + z.i * z.i > 4.0) {
@@ -131,8 +143,41 @@ void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex compl
     mga_scratch_release(scratch);
 }
 
+void draw(gfx_window* win);
+
 void mga_err(mga_error err) {
     printf("MGA ERROR %d: %s", err.code, err.msg);
+}
+
+static u32 vertex_buffer, vertex_array;
+static struct {
+    u32 shader, texture;
+} gl_fract = { 0 };
+static struct {
+    u32 shader, scale_loc, offset_loc;
+} gl_rect = { 0 };
+
+static vec2 init_rect_pos = { 0 };
+static rect64 mouse_norm_rect(gfx_window* win) {
+    vec2 p0 = init_rect_pos;
+    vec2 p1 = win->mouse_pos;
+    if (p1.x < p0.x) {
+        vec2 temp = p0;
+        p0 = p1;
+        p1 = temp;
+    }
+
+    rect64 rect = {
+        p0.x, p0.y,
+        p1.x - p0.x,
+        (f64)(p1.x - p0.x) * (9.0 / 16.0)
+    };
+    rect.x /= (f64)win->width;
+    rect.w /= (f64)win->width;
+    rect.y /= (f64)win->height;
+    rect.h /= (f64)win->height;
+
+    return rect;
 }
 
 int main(void) {
@@ -152,7 +197,7 @@ int main(void) {
         screen[i].a = 255;
     }
 
-    const char* vert_source = ""
+    const char* fract_vert_source = ""
         "#version 330 core\n"
         "layout (location = 0) in vec2 a_pos;"
         "layout (location = 1) in vec2 a_uv;"
@@ -161,23 +206,41 @@ int main(void) {
         "   uv = a_uv;"
         "   gl_Position = vec4(a_pos, 0, 1);"
         "}";
-    const char* frag_source = ""
+    const char* fract_frag_source = ""
         "#version 330 core\n"
-        "#define PI 3.14159265359\n"
         "layout (location = 0) out vec4 out_col;"
         "uniform sampler2D u_texture;"
         "in vec2 uv;"
         "void main() {"
         "    vec4 sample = texture(u_texture, uv);"
         "    out_col = sample;"
-        /*"    if (sample.xyz == vec3(0)) {"
-        "        out_col = vec4(0, 0, 0, 1);"
-        "    } else {"
-        "        out_col.r = sin(sample.r * PI) * 0.5 + 0.5;"
-        "        out_col.g = sin(sample.r * PI) * 0.5 + 0.5;"
-        "        out_col.b = sin(sample.r * PI) * 0.5 + 0.5;"
-        "        out_col.a = 1.0;"
-        "    }"*/
+        "}";
+    
+    const char* rect_vert_source = ""
+        "#version 330 core\n"
+        "layout (location = 0) in vec2 a_pos;"
+        "layout (location = 1) in vec2 a_uv;"
+        "uniform vec2 u_scale;"
+        "uniform vec2 u_offset;"
+        "out vec2 uv;"
+        "flat out vec2 scale;"
+        "void main() {"
+        "    uv = a_uv;"
+        "    scale = u_scale;"
+        "   gl_Position = vec4(a_pos * u_scale + u_offset, 0, 1);"
+        "}";
+    const char* rect_frag_source = ""
+        "#version 330 core\n"
+        "layout (location = 0) out vec4 out_col;"
+        "in vec2 uv;"
+        "flat in vec2 scale;"
+        "void main() {"
+        "    vec2 border = vec2(0.005 / scale.x, 0.006 / scale.y);"
+        "    float alpha =      smoothstep(border.x, 0.0, uv.x);"
+        "    alpha = max(alpha, smoothstep(1.0 - border.x, 1.0, uv.x));"
+        "    alpha = max(alpha, smoothstep(border.y, 0.0, uv.y));"
+        "    alpha = max(alpha, smoothstep(1.0 - border.y, 1.0, uv.y));"
+        "    out_col = vec4(vec3(1.), alpha);"
         "}";
 
     f32 verts[4 * 6] = {
@@ -190,20 +253,21 @@ int main(void) {
          1.0f, -1.0f,   1.0f, 1.0f,
     };
 
-    u32 vertex_array = 0;
     glGenVertexArrays(1, &vertex_array);
     glBindVertexArray(vertex_array);
 
-    u32 vertex_buffer = glh_create_buffer(
+    vertex_buffer = glh_create_buffer(
         GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW
     );
-    u32 shader = glh_create_shader(vert_source, frag_source);
+    
+    gl_fract.shader = glh_create_shader(fract_vert_source, fract_frag_source);
+    
+    gl_rect.shader = glh_create_shader(rect_vert_source, rect_frag_source);
+    gl_rect.scale_loc = glGetUniformLocation(gl_rect.shader, "u_scale");
+    gl_rect.offset_loc = glGetUniformLocation(gl_rect.shader, "u_offset");
 
-    glEnable(GL_TEXTURE_2D);
-
-    u32 texture = 0;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    glGenTextures(1, &gl_fract.texture);
+    glBindTexture(GL_TEXTURE_2D, gl_fract.texture);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -212,24 +276,12 @@ int main(void) {
 
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, IMG_WIDTH, IMG_HEIGHT);
 
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
     glClearColor(0.45f, 0.65f, 0.77f, 1.0f);
-
-    /*fpng_img img = {
-        .channels = 4,
-        .width = IMG_WIDTH,
-        .height = IMG_HEIGHT,
-        .data = (u8*)screen
-    };
-    string8 out = { 0 };
-    fpng_encode_image_to_memory(perm_arena, &img, &out, 0);
-
-    FILE* f = fopen("out.png", "wb");
-    fwrite(out.str, 1, out.size, f);
-    fclose(f);*/
 
     complex complex_dim = { 4.0, 4.0 * 9.0 / 16.0 };
     complex complex_center = { 0, 0 };
-    vec2 init_pos = { 0 };
     u32 iterations = 64;
 
     render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, iterations);
@@ -239,21 +291,23 @@ int main(void) {
         gfx_win_process_events(win);
 
         if (win->mouse_buttons[0] && !win->prev_mouse_buttons[0]) {
-            init_pos = win->mouse_pos;
+            init_rect_pos = win->mouse_pos;
         }
 
         if (!win->mouse_buttons[0] && win->prev_mouse_buttons[0]) {
-            // -0.5 -> 0.5
-            complex norm_center = {
-                (((init_pos.x + win->mouse_pos.x) * 0.5) / win->width) - 0.5,
-                (((init_pos.y + win->mouse_pos.y) * 0.5) / win->height) - 0.5
+            rect64 rect = mouse_norm_rect(win);
+            if (rect.x == 0) rect.x = 1;
+            if (rect.y == 0) rect.y = 1;
+            f64 center[2] = {
+                rect.x + rect.w * 0.5,
+                rect.y + rect.h * 0.5
             };
-            complex_center.r += norm_center.r * complex_dim.r;
-            complex_center.i += norm_center.i * complex_dim.i;
 
-            
-            complex_dim.r *= -((init_pos.x - win->mouse_pos.x) / win->width);
-            complex_dim.i = complex_dim.r * (9.0f / 16.0f);//-((init_pos.y - win->mouse_pos.y) / win->height);
+            complex_center.r += (center[0] - 0.5) * complex_dim.r;
+            complex_center.i += (center[1] - 0.5) * complex_dim.i;
+
+            complex_dim.r *= rect.w;
+            complex_dim.i *= rect.h;
 
             iterations += 64;
             
@@ -275,6 +329,7 @@ int main(void) {
                     done = true;
                 
                 render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 512);
+                
                 complex_dim.r *= 1.5;
                 complex_dim.i *= 1.5;
                 
@@ -294,6 +349,9 @@ int main(void) {
                 FILE* f = fopen(file_path, "wb");
                 fwrite(out.str, 1, out.size, f);
                 fclose(f);
+                
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
+                draw(win);
 
                 mga_temp_end(temp);
                 
@@ -311,30 +369,12 @@ int main(void) {
                 rename(file2, file1);
                 rename("out/temp.png", file2);
             }
+
+            printf("done saving images\n");
         }
 
-        gfx_win_clear(win);
-
-        glUseProgram(shader);
-        glBindVertexArray(vertex_array);
-        glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture);
-
-        glEnableVertexAttribArray(0);
-        glEnableVertexAttribArray(1);
-
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(f32) * 4, (void*)(0));
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(f32) * 4, (void*)(sizeof(f32) * 2));
-
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-
-        glDisableVertexAttribArray(0);
-        glDisableVertexAttribArray(1);
-
-        gfx_win_swap_buffers(win);
-
+        draw(win);
+        
         #if defined(PLATFORM_WIN32)
             Sleep(16);
         #elif defined(PLATFORM_LINUX)
@@ -342,8 +382,8 @@ int main(void) {
         #endif
     }
 
-    glDeleteTextures(1, &texture);
-    glDeleteProgram(shader);
+    glDeleteTextures(1, &gl_fract.texture);
+    glDeleteProgram(gl_fract.shader);
     glDeleteBuffers(1, &vertex_buffer);
     glDeleteVertexArrays(1, &vertex_array);
 
@@ -352,4 +392,47 @@ int main(void) {
     mga_destroy(perm_arena);
 
     return 0;
+}
+
+void draw(gfx_window* win) {
+    gfx_win_clear(win);
+
+    glUseProgram(gl_fract.shader);
+    glBindVertexArray(vertex_array);
+    glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, gl_fract.texture);
+
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(f32) * 4, (void*)(0));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(f32) * 4, (void*)(sizeof(f32) * 2));
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    if (win->mouse_buttons[0]) {
+        glUseProgram(gl_rect.shader);
+
+        rect64 mouse_rect = mouse_norm_rect(win);
+        // TODO: f64 vectors
+        f64 center[2] = {
+            mouse_rect.x + mouse_rect.w * 0.5,
+            mouse_rect.y + mouse_rect.h * 0.5
+        };
+
+        glUniform2f(gl_rect.scale_loc, mouse_rect.w, mouse_rect.h);
+        glUniform2f(
+            gl_rect.offset_loc,
+            center[0] * 2.0f - 1.0f,
+            -center[1] * 2.0f + 1.0f
+        );
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+
+    gfx_win_swap_buffers(win);
 }
