@@ -18,6 +18,9 @@ typedef struct _thread_pool {
 
     CRITICAL_SECTION queue_mutex; // I know that it is not technically a mutex on win32
     CONDITION_VARIABLE queue_cond_var;
+
+    u32 num_active;
+    CONDITION_VARIABLE active_cond_var;
 } thread_pool;
 
 static DWORD w32_thread_start(void* arg) {
@@ -36,10 +39,20 @@ static DWORD w32_thread_start(void* arg) {
             tp->task_queue[i] = tp->task_queue[i + 1];
         }
         tp->num_tasks--;
+        tp->num_active++;
 
         LeaveCriticalSection(&tp->queue_mutex);
 
         task.func(task.arg);
+
+        EnterCriticalSection(&tp->queue_mutex);
+
+        tp->num_active--;
+        if (tp->num_active == 0) {
+            WakeConditionVariable(&tp->active_cond_var);
+        }
+
+        LeaveCriticalSection(&tp->queue_mutex);
     }
 
     return 0;
@@ -53,6 +66,7 @@ thread_pool* thread_pool_create(mg_arena* arena, u32 num_threads, u32 max_tasks)
 
     InitializeCriticalSection(&tp->queue_mutex);
     InitializeConditionVariable(&tp->queue_cond_var);
+    InitializeConditionVariable(&tp->active_cond_var);
 
     tp->num_threads = num_threads;
     tp->threads = MGA_PUSH_ZERO_ARRAY(arena, HANDLE, num_threads);
@@ -73,12 +87,13 @@ void thread_pool_destroy(thread_pool* tp) {
 }
 
 void thread_pool_add_task(thread_pool* tp, thread_task task) {
+    EnterCriticalSection(&tp->queue_mutex);
+
     if ((u64)tp->num_tasks + 1 >= (u64)tp->max_tasks) {
+        LeaveCriticalSection(&tp->queue_mutex);
         fprintf(stderr, "Thread pool exceeded max tasks\n");
         return;
     }
-
-    EnterCriticalSection(&tp->queue_mutex);
 
     tp->task_queue[tp->num_tasks++] = task;
 
@@ -86,14 +101,15 @@ void thread_pool_add_task(thread_pool* tp, thread_task task) {
     WakeConditionVariable(&tp->queue_cond_var);
 }
 void thread_pool_wait(thread_pool* tp) {
+    EnterCriticalSection(&tp->queue_mutex);
     while (true) {
-        EnterCriticalSection(&tp->queue_mutex);
-
-        if (tp->num_tasks == 0)
+        if (tp->num_active != 0) {
+            SleepConditionVariableCS(&tp->active_cond_var, &tp->queue_mutex, INFINITE);
+        } else {
             break;
-
-        LeaveCriticalSection(&tp->queue_mutex);
+        }
     }
+    LeaveCriticalSection(&tp->queue_mutex);
 
 }
 void thread_pool_pause(thread_pool* tp) { UNUSED(tp); }

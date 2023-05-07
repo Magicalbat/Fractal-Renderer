@@ -133,6 +133,7 @@ void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex compl
         );
     }
 
+    Sleep(10);
     thread_pool_wait(tp);
 
     mga_scratch_release(scratch);
