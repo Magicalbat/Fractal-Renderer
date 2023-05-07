@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include "base/base.h"
+#include "os/os_thread_pool.h"
 #include "gfx/gfx.h"
 
 #if defined(PLATFORM_WIN32)
@@ -19,21 +20,12 @@
 
 #include "fpng/fpng.h"
 
-#include <threads.h>
-#include <time.h>
-
 #define WIN_SCALE 1
 #define WIDTH (u32)(320 * WIN_SCALE)
 #define HEIGHT (u32)(180 * WIN_SCALE)
 
 #define IMG_WIDTH 1920
 #define IMG_HEIGHT 1080
-
-u64 time_us(void) {
-    struct timespec ts = { 0 };
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (u64)ts.tv_sec * 1e6 + (u64)ts.tv_nsec / 1e3;
-}
 
 typedef struct {
     f64 x, y, w, h;
@@ -71,7 +63,7 @@ typedef struct {
     u32 iterations;
 } mandelbrot_args;
 
-int render_mandelbrot_section(void* void_args) {
+void render_mandelbrot_section(void* void_args) {
     mandelbrot_args* args = (mandelbrot_args*)void_args;
     
     for (u32 y = args->start_y; y < args->start_y + args->height; y++) {
@@ -109,15 +101,13 @@ int render_mandelbrot_section(void* void_args) {
             }
         }
     }
-
-    return 0;
 }
 
 #define NUM_THREADS 8
+static thread_pool* tp = NULL;
 void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex complex_dim, complex complex_center, u32 iterations) {
     mga_temp scratch = mga_scratch_get(NULL, 0);
 
-    thrd_t threads[NUM_THREADS];
     u32 y_step = img_height / NUM_THREADS;
     
     for (u32 i = 0; i < NUM_THREADS; i++) {
@@ -132,13 +122,18 @@ void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex compl
             .complex_center = complex_center,
             .iterations = iterations
         };
-        thrd_create(&threads[i], render_mandelbrot_section, args);
+
         //render_mandelbrot_section(args);
+        thread_pool_add_task(
+            tp,
+            (thread_task){
+                .func = render_mandelbrot_section,
+                .arg = args
+            }
+        );
     }
 
-    for (u32 i = 0; i < NUM_THREADS; i++) {
-        thrd_join(threads[i], NULL);
-    }
+    thread_pool_wait(tp);
 
     mga_scratch_release(scratch);
 }
@@ -192,6 +187,8 @@ int main(void) {
 
     gfx_window* win = gfx_win_create(perm_arena, WIDTH, HEIGHT, STR8("Fractal Renderer"));
 
+    tp = thread_pool_create(perm_arena, NUM_THREADS, 128);
+
     pixel8* screen = MGA_PUSH_ZERO_ARRAY(perm_arena, pixel8, IMG_WIDTH * IMG_HEIGHT);
     for (u32 i = 0; i < IMG_WIDTH * IMG_HEIGHT; i++) {
         screen[i].a = 255;
@@ -235,11 +232,11 @@ int main(void) {
         "in vec2 uv;"
         "flat in vec2 scale;"
         "void main() {"
-        "    vec2 border = vec2(0.005 / scale.x, 0.006 / scale.y);"
-        "    float alpha =      smoothstep(border.x, 0.0, uv.x);"
-        "    alpha = max(alpha, smoothstep(1.0 - border.x, 1.0, uv.x));"
-        "    alpha = max(alpha, smoothstep(border.y, 0.0, uv.y));"
-        "    alpha = max(alpha, smoothstep(1.0 - border.y, 1.0, uv.y));"
+        "    vec2 border = vec2(0.002 / scale.x, 0.003 / scale.y);"
+        "    float alpha = step(uv.x, border.x);"
+        "    alpha = max(alpha, step(1.0 - border.x, uv.x));"
+        "    alpha = max(alpha, step(uv.y, border.y));"
+        "    alpha = max(alpha, step(1.0 - border.y, uv.y));"
         "    out_col = vec4(vec3(1.), alpha);"
         "}";
 
@@ -307,7 +304,7 @@ int main(void) {
             complex_center.i += (center[1] - 0.5) * complex_dim.i;
 
             complex_dim.r *= rect.w;
-            complex_dim.i *= rect.h;
+            complex_dim.i *= rect.w;
 
             iterations += 64;
             
@@ -346,7 +343,8 @@ int main(void) {
                 sprintf(file_path, "out/img_%.4u.png", i);
                 i++;
                 
-                FILE* f = fopen(file_path, "wb");
+                FILE* f = NULL;
+                fopen_s(&f, file_path, "wb");
                 fwrite(out.str, 1, out.size, f);
                 fclose(f);
                 
@@ -388,6 +386,8 @@ int main(void) {
     glDeleteVertexArrays(1, &vertex_array);
 
     gfx_win_destroy(win);
+
+    thread_pool_destroy(tp);
 
     mga_destroy(perm_arena);
 
