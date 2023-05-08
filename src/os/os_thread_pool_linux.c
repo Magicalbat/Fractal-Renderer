@@ -1,40 +1,36 @@
 #include "base/base_defs.h"
 
-#ifdef PLATFORM_WIN32
+#ifdef PLATFORM_LINUX
 
 #include "os_thread_pool.h"
 
-#define UNICODE
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-
 #include <stdio.h>
-
-// TODO: look into PTP_POOL
+#include <pthread.h>
 
 typedef struct _thread_pool {
     u32 num_threads;
-    HANDLE* threads;
+    pthread_t* threads;
 
     u32 max_tasks;
     u32 num_tasks;
     thread_task* task_queue;
 
-    CRITICAL_SECTION mutex; // I know that it is not technically a mutex on win32
-    CONDITION_VARIABLE queue_cond_var;
+    pthread_mutex_t mutex;
+    pthread_cond_t queue_cond_var;
 
     u32 num_active;
-    CONDITION_VARIABLE active_cond_var;
+    pthread_cond_t active_cond_var;
 } thread_pool;
 
-static DWORD w32_thread_start(void* arg) {
+static void* linux_thread_start(void* arg) {
     thread_pool* tp = (thread_pool*)arg;
     thread_task task = { 0 };
 
     while (true) {
-        EnterCriticalSection(&tp->mutex);
+        pthread_mutex_lock(&tp->mutex);
+
         while (tp->num_tasks == 0) {
-            SleepConditionVariableCS(&tp->queue_cond_var, &tp->mutex, INFINITE);
+            pthread_cond_wait(&tp->queue_cond_var, &tp->mutex);
         }
 
         tp->num_active++;
@@ -44,21 +40,21 @@ static DWORD w32_thread_start(void* arg) {
         }
         tp->num_tasks--;
 
-        LeaveCriticalSection(&tp->mutex);
+        pthread_mutex_unlock(&tp->mutex);
 
         task.func(task.arg);
 
-        EnterCriticalSection(&tp->mutex);
+        pthread_mutex_lock(&tp->mutex);
 
         tp->num_active--;
         if (tp->num_active == 0) {
-            WakeConditionVariable(&tp->active_cond_var);
+            pthread_cond_signal(&tp->active_cond_var);
         }
 
-        LeaveCriticalSection(&tp->mutex);
+        pthread_mutex_unlock(&tp->mutex);
     }
 
-    return 0;
+    return NULL;
 }
 
 thread_pool* thread_pool_create(mg_arena* arena, u32 num_threads, u32 max_tasks) {
@@ -67,53 +63,55 @@ thread_pool* thread_pool_create(mg_arena* arena, u32 num_threads, u32 max_tasks)
     tp->max_tasks = max_tasks;
     tp->task_queue = MGA_PUSH_ZERO_ARRAY(arena, thread_task, max_tasks);
 
-    InitializeCriticalSection(&tp->mutex);
-    InitializeConditionVariable(&tp->queue_cond_var);
-    InitializeConditionVariable(&tp->active_cond_var);
+    pthread_mutex_init(&tp->mutex, NULL);
+    pthread_cond_init(&tp->queue_cond_var, NULL);
+    pthread_cond_init(&tp->active_cond_var, NULL);
 
     tp->num_threads = num_threads;
-    tp->threads = MGA_PUSH_ZERO_ARRAY(arena, HANDLE, num_threads);
+    tp->threads = MGA_PUSH_ZERO_ARRAY(arena, pthread_t, num_threads);
     for (u32 i = 0; i < num_threads; i++) {
-        tp->threads[i] = CreateThread(
-            NULL, 0, w32_thread_start, tp, 0, NULL
-        );
+        pthread_create(&tp->threads[i], NULL, linux_thread_start, tp);
     }
 
     return tp;
 }
 void thread_pool_destroy(thread_pool* tp) {
     for (u32 i = 0; i < tp->num_threads; i++) {
-        CloseHandle(tp->threads[i]);
+        pthread_cancel(tp->threads[i]);
     }
 
-    DeleteCriticalSection(&tp->mutex);
+    pthread_mutex_destroy(&tp->mutex);
+    pthread_cond_destroy(&tp->queue_cond_var);
+    pthread_cond_destroy(&tp->active_cond_var);
 }
 
 void thread_pool_add_task(thread_pool* tp, thread_task task) {
-    EnterCriticalSection(&tp->mutex);
+    pthread_mutex_lock(&tp->mutex);
 
     if ((u64)tp->num_tasks + 1 >= (u64)tp->max_tasks) {
-        LeaveCriticalSection(&tp->mutex);
+        pthread_mutex_unlock(&tp->mutex);
         fprintf(stderr, "Thread pool exceeded max tasks\n");
         return;
     }
 
     tp->task_queue[tp->num_tasks++] = task;
 
-    LeaveCriticalSection(&tp->mutex);
-    WakeConditionVariable(&tp->queue_cond_var);
+    pthread_mutex_unlock(&tp->mutex);
+
+    pthread_cond_signal(&tp->queue_cond_var);
 }
 void thread_pool_wait(thread_pool* tp) {
-    EnterCriticalSection(&tp->mutex);
+    pthread_mutex_lock(&tp->mutex);
+
     while (true) {
         if (tp->num_active != 0 || tp->num_tasks != 0) {
-            SleepConditionVariableCS(&tp->active_cond_var, &tp->mutex, INFINITE);
+            pthread_cond_wait(&tp->active_cond_var, &tp->mutex);
         } else {
             break;
         }
     }
-    LeaveCriticalSection(&tp->mutex);
 
+    pthread_mutex_unlock(&tp->mutex);
 }
 
-#endif // PLATFORM_WIN32
+#endif // PLATFORM_LINUX

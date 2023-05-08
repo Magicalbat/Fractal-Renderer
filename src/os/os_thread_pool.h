@@ -3,6 +3,8 @@
 
 #include "base/base.h"
 
+// TODO: exit better from threads
+
 typedef struct _thread_pool thread_pool;
 
 typedef void (thread_func)(void*);

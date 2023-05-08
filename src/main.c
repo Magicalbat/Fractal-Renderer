@@ -343,8 +343,12 @@ int main(void) {
                 sprintf(file_path, "out/img_%.4u.png", i);
                 i++;
                 
+                #ifdef PLATFORM_WIN32
                 FILE* f = NULL;
                 fopen_s(&f, file_path, "wb");
+                #else
+                FILE* f = fopen(file_path, "wb");
+                #endif
                 fwrite(out.str, 1, out.size, f);
                 fclose(f);
                 
@@ -369,6 +373,10 @@ int main(void) {
             }
 
             printf("done saving images\n");
+
+            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 512);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
+            draw(win);
         }
 
         draw(win);
