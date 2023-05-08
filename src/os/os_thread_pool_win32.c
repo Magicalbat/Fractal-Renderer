@@ -1,3 +1,7 @@
+#include "base/base_defs.h"
+
+#ifdef PLATFORM_WIN32
+
 #include "os_thread_pool.h"
 
 #define UNICODE
@@ -34,12 +38,12 @@ static DWORD w32_thread_start(void* arg) {
             SleepConditionVariableCS(&tp->queue_cond_var, &tp->queue_mutex, INFINITE);
         }
 
+        tp->num_active++;
         task = tp->task_queue[0];
         for (u32 i = 0; i < tp->num_tasks - 1; i++) {
             tp->task_queue[i] = tp->task_queue[i + 1];
         }
         tp->num_tasks--;
-        tp->num_active++;
 
         LeaveCriticalSection(&tp->queue_mutex);
 
@@ -103,7 +107,7 @@ void thread_pool_add_task(thread_pool* tp, thread_task task) {
 void thread_pool_wait(thread_pool* tp) {
     EnterCriticalSection(&tp->queue_mutex);
     while (true) {
-        if (tp->num_active != 0) {
+        if (tp->num_active != 0 || tp->num_tasks != 0) {
             SleepConditionVariableCS(&tp->active_cond_var, &tp->queue_mutex, INFINITE);
         } else {
             break;
@@ -112,6 +116,5 @@ void thread_pool_wait(thread_pool* tp) {
     LeaveCriticalSection(&tp->queue_mutex);
 
 }
-void thread_pool_pause(thread_pool* tp) { UNUSED(tp); }
-void thread_pool_resume(thread_pool* tp) { UNUSED(tp); }
 
+#endif // PLATFORM_WIN32

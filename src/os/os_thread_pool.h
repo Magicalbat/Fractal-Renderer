@@ -16,7 +16,5 @@ void thread_pool_destroy(thread_pool* tp);
 
 void thread_pool_add_task(thread_pool* tp, thread_task task);
 void thread_pool_wait(thread_pool* tp);
-void thread_pool_pause(thread_pool* tp);
-void thread_pool_resume(thread_pool* tp);
 
 #endif // OS_THREAD_POOL_H

@@ -1,4 +1,6 @@
-#ifdef _WIN32
+#include "base/base_defs.h"
+
+#ifdef PLATFORM_WIN32
 
 #include "gfx/gfx.h"
 
@@ -275,4 +277,4 @@ static void* w32_gl_load(const char* name) {
     return p;
 }
 
-#endif // _WIN32
+#endif // PLATFORM_WIN32

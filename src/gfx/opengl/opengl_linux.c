@@ -1,4 +1,6 @@
-#ifdef __linux__
+#include "base/base_defs.h"
+
+#ifdef PLATFORM_LINUX
 
 #include "gfx/gfx.h"
 #include "opengl.h"
@@ -209,4 +211,4 @@ void gfx_win_swap_buffers(gfx_window* win) {
     glXSwapBuffers(win->backend->display, win->backend->window);
 }
 
-#endif // __linux__
+#endif // PLATFORM_LINUX
