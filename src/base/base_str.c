@@ -284,8 +284,11 @@ string_decode str_decode_utf8(u8* str, u32 cap) {
             u32 code_point = (str[0] & first_byte_mask[len]) << 18;
             switch(len) {
                 case 4: code_point |= (str[3] & 0b00111111) << 0;
+                // fall through
                 case 3: code_point |= (str[2] & 0b00111111) << 6;
+                // fall through
                 case 2: code_point |= (str[1] & 0b00111111) << 12;
+                // fall through
                 default: break;
             }
             code_point >>= final_shift[len];

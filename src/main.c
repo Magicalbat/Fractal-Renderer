@@ -5,6 +5,9 @@
 #include "os/os_thread_pool.h"
 #include "gfx/gfx.h"
 
+#include "math/math_vec.h"
+#include "math/math_complex.h"
+
 #if defined(PLATFORM_WIN32)
 #    define UNICODE
 #    define WIN32_LEAN_AND_MEAN
@@ -32,23 +35,6 @@ typedef struct {
 } rect64;
 
 typedef struct {
-    f64 r, i;
-} complex;
-
-complex cx_add(complex a, complex b) {
-    return (complex){
-        .r = a.r + b.r,
-        .i = a.i + b.i
-    };
-}
-complex cx_mul(complex a, complex b) {
-    return (complex) {
-        .r = a.r * b.r - a.i * b.i,
-        .i = a.r * b.i + a.i * b.r
-    };
-}
-
-typedef struct {
     u8 r, g, b, a;
 } pixel8;
 
@@ -58,8 +44,8 @@ typedef struct {
     u32 img_height;
     u32 start_y;
     u32 height;
-    complex complex_dim;
-    complex complex_center;
+    complexd complex_dim;
+    complexd complex_center;
     u32 iterations;
 } mandelbrot_args;
 
@@ -68,17 +54,25 @@ void render_mandelbrot_section(void* void_args) {
     
     for (u32 y = args->start_y; y < args->start_y + args->height; y++) {
         for (u32 x = 0; x < args->img_width; x++) {
-            complex z = { 0 };
-            complex c = {
+            #if 1
+            complexd z = { 0 };
+            complexd c = {
                 (((f64)x / (f64)args->img_width) - 0.5) * args->complex_dim.r + args->complex_center.r,
                 (((f64)y / (f64)args->img_height) - 0.5) * args->complex_dim.i + args->complex_center.i
             };
+            #else
+            complexd c = { 0.975, -1.175 };
+            complexd z = {
+                (((f64)x / (f64)args->img_width) - 0.5) * args->complex_dim.r + args->complex_center.r,
+                (((f64)y / (f64)args->img_height) - 0.5) * args->complex_dim.i + args->complex_center.i
+            };
+            #endif
 
             f32 n = (f32)args->iterations - 1.0;
 
             for (u32 i = 0; i < args->iterations; i++) {
-                //z = (complex){ fabs(z.r), fabs(z.i) };
-                z = cx_add(cx_mul(z, z), c);
+                //z = (complexd){ fabs(z.r), fabs(z.i) };
+                z = complexd_add(complexd_mul(z, z), c);
 
                 if (z.r * z.r + z.i * z.i > 4.0) {
                     n = (f32)i;
@@ -105,7 +99,7 @@ void render_mandelbrot_section(void* void_args) {
 
 #define NUM_THREADS 8
 static thread_pool* tp = NULL;
-void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex complex_dim, complex complex_center, u32 iterations) {
+void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complexd complex_dim, complexd complex_center, u32 iterations) {
     mga_temp scratch = mga_scratch_get(NULL, 0);
 
     u32 y_step = img_height / NUM_THREADS;
@@ -152,12 +146,12 @@ static struct {
     u32 shader, scale_loc, offset_loc;
 } gl_rect = { 0 };
 
-static vec2 init_rect_pos = { 0 };
+static vec2f init_rect_pos = { 0 };
 static rect64 mouse_norm_rect(gfx_window* win) {
-    vec2 p0 = init_rect_pos;
-    vec2 p1 = win->mouse_pos;
+    vec2f p0 = init_rect_pos;
+    vec2f p1 = win->mouse_pos;
     if (p1.x < p0.x) {
-        vec2 temp = p0;
+        vec2f temp = p0;
         p0 = p1;
         p1 = temp;
     }
@@ -277,8 +271,8 @@ int main(void) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
     glClearColor(0.45f, 0.65f, 0.77f, 1.0f);
 
-    complex complex_dim = { 4.0, 4.0 * 9.0 / 16.0 };
-    complex complex_center = { 0, 0 };
+    complexd complex_dim = { 4.0, 4.0 * 9.0 / 16.0 };
+    complexd complex_center = { 0 };
     u32 iterations = 64;
 
     render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, iterations);
@@ -295,16 +289,15 @@ int main(void) {
             rect64 rect = mouse_norm_rect(win);
             if (rect.x == 0) rect.x = 1;
             if (rect.y == 0) rect.y = 1;
-            f64 center[2] = {
+            vec2d center = {
                 rect.x + rect.w * 0.5,
                 rect.y + rect.h * 0.5
             };
 
-            complex_center.r += (center[0] - 0.5) * complex_dim.r;
-            complex_center.i += (center[1] - 0.5) * complex_dim.i;
+            complex_center.r += (center.x - 0.5) * complex_dim.r;
+            complex_center.i += (center.y - 0.5) * complex_dim.i;
 
-            complex_dim.r *= rect.w;
-            complex_dim.i *= rect.w;
+            complex_dim = complexd_scale(complex_dim, rect.w);
 
             iterations += 64;
             
@@ -325,10 +318,9 @@ int main(void) {
                 if (complex_dim.r >= 4.0f)
                     done = true;
                 
-                render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 512);
-                
-                complex_dim.r *= 1.5;
-                complex_dim.i *= 1.5;
+                render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 1024);
+
+                complex_dim = complexd_scale(complex_dim, 1.5);
                 
                 fpng_img img = {
                     .channels = 4,
@@ -424,8 +416,7 @@ void draw(gfx_window* win) {
         glUseProgram(gl_rect.shader);
 
         rect64 mouse_rect = mouse_norm_rect(win);
-        // TODO: f64 vectors
-        f64 center[2] = {
+        vec2d center = {
             mouse_rect.x + mouse_rect.w * 0.5,
             mouse_rect.y + mouse_rect.h * 0.5
         };
@@ -433,8 +424,8 @@ void draw(gfx_window* win) {
         glUniform2f(gl_rect.scale_loc, mouse_rect.w, mouse_rect.h);
         glUniform2f(
             gl_rect.offset_loc,
-            center[0] * 2.0f - 1.0f,
-            -center[1] * 2.0f + 1.0f
+            center.x * 2.0f - 1.0f,
+            -center.y * 2.0f + 1.0f
         );
         glDrawArrays(GL_TRIANGLES, 0, 6);
     }

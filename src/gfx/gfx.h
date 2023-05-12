@@ -12,7 +12,7 @@ typedef struct {
 
     b32 should_close;
 
-    vec2 mouse_pos;
+    vec2f mouse_pos;
     b8 mouse_buttons[5];
     b8 prev_mouse_buttons[5];
 

@@ -33,6 +33,9 @@ STATIC_ASSERT(sizeof(f64) == 8, f64_size);
 
 #define UNUSED(x) (void)(x)
 
+#define CONCAT_NX(a, b) a##b
+#define CONCAT(a, b) CONCAT_NX(a, b)
+
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
