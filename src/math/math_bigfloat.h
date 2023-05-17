@@ -13,7 +13,7 @@ typedef struct {
 } bigfloat;
 
 bigfloat bf_from_f32(mg_arena* arena, f32 num, u32 prec);
-bigfloat bf_from_f64(mg_arena* arena, f32 num, u32 prec);
+bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec);
 bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec);
 
 b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);

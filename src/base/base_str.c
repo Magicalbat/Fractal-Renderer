@@ -65,6 +65,14 @@ b8 str8_contains(string8 a, string8 b) {
     return false;
 }
 
+u64 str8_index_of(string8 str, u8 c) {
+    for (u64 i = 0; i < str.size; i++) {
+        if (str.str[i] == c)
+            return i;
+    }
+
+    return (u64)(-1);
+}
 u64 str8_find_first(string8 a, string8 b) {
     for (u64 i = 0; i < a.size - b.size + 1; i++) {
         b8 contains = true;

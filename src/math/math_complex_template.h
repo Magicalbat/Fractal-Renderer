@@ -8,6 +8,9 @@
 #define CX_NAME_SUFFIX _##CX_BASE_TYPE
 #endif
 
+#ifdef complex
+#undef complex
+#endif
 #define CX_NAME CONCAT(complex, CX_NAME_SUFFIX)
 
 typedef struct { CX_BASE_TYPE r, i; } CX_NAME;

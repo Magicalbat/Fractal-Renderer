@@ -1,51 +1,23 @@
 #include "math_bigfloat.h"
+
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 
-/*typedef struct {
-    u32 mantissa;
-    i16 exponent;
-    u16 sign;
-} float_parts;
+bigfloat bf_from_f32(mg_arena* arena, f32 num, u32 prec);
+bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec);
+static bigfloat bf_from_hex_str(mg_arena* arena, string8 str, u32 prec);
+bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec) {
+    if (base == 16)
+        return bf_from_hex_str(arena, str, prec);
 
-float_parts f32_get_parts(f32 num) {
-    float_parts parts = {
-        .sign = !!signbit(num)
-    };
-
-    int exp = 0;
-    float mantissa = frexpf(num, &exp);
-    parts.exponent = (i16)exp;
-    
-    mantissa = ldexpf(mantissa, 24);
-    parts.mantissa = (u32)truncf(mantissa);
-
-    return parts;
+    fprintf(stderr, "Unsuporrted base %u", base);
+    return (bigfloat) { 0 };
 }
-float_parts f64_get_parts(f64 num) {
-    float_parts parts = {
-        .sign = !!signbit(num)
-    };
-
-    int exp = 0;
-    double mantissa = frexp(num, &exp);
-    parts.exponent = (i16)exp;
-    
-    mantissa = ldexp(mantissa, 53);
-    parts.mantissa = (u32)truncf(mantissa);
-
-    return parts;
-}*/
-
-bigfloat bf_from_f32(mg_arena* arena, f32 num, u32 prec) {
-    bigfloat out = {
-        .prec = prec,
-        .limbs = MGA_PUSH_ZERO_ARRAY(arena, u32, prec)
-    };
-
-    return out;
+static bigfloat bf_from_hex_str(mg_arena* arena, string8 str, u32 prec) {
+    // TODO: create util function to "correct" bigfloat 
+    return (bigfloat){ 0 };
 }
-bigfloat bf_from_f64(mg_arena* arena, f32 num, u32 prec);
-bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec);
 
 b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 b32 bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);

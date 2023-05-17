@@ -60,6 +60,7 @@ u8*     str8_to_cstr(mg_arena* arena, string8 str);
 b8 str8_equals(string8 a, string8 b);
 b8 str8_contains(string8 a, string8 b);
 
+u64 str8_index_of(string8 str, u8 c);
 u64 str8_find_first(string8 a, string8 b);
 u64 str8_find_last(string8 a, string8 b);
 

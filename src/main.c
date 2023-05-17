@@ -169,61 +169,9 @@ static rect64 mouse_norm_rect(gfx_window* win) {
     return rect;
 }
 
-typedef struct {
-    u16 sign;
-    u16 exponent;
-    u64 mantissa;
-} float_parts;
 
-typedef union {
-    f32 num;
-    u32 bits;
-} f32_bits;
-
-typedef union {
-    f64 num;
-    u64 bits;
-} f64_bits;
-
-float_parts f32_get_parts(f32 num) {
-    f32_bits num_union = { .num = num };
-    u32 bits = num_union.bits;
-
-    float_parts parts = { 0 };
-
-    #if BIG_ENDIAN
-    parts.sign = bits >> 31;
-    parts.exponent = (u16)((bits << 1) >> 24);
-    parts.mantissa = (u64)(bits & 0x7fffff);
-    #else
-    // TODO: this
-    #endif
-
-    return parts;
-}
-
-float_parts f64_get_parts(f64 num) {
-    f64_bits num_union = { .num = num };
-    u64 bits = num_union.bits;
-
-    float_parts parts = { 0 };
-
-    #if BIG_ENDIAN
-    parts.sign = bits >> 63;
-    parts.exponent = (i16)((bits << 1) >> 53);
-    parts.mantissa = (u64)(bits & 0xfffffffffffff);
-    #else
-    // TODO: this
-    #endif
-
-    return parts;
-}
 
 int main(void) {
-    f64 x = -1234.5678;
-    float_parts xp = f64_get_parts(x);
-    printf("%d %d %lu\n", xp.sign, xp.exponent, xp.mantissa);
-    
     mga_desc desc = {
         .desired_max_size = MGA_MiB(16),
         .desired_block_size = MGA_KiB(256),
