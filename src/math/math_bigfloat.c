@@ -47,8 +47,6 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
     u32 init_decimal_limb = (str.size - decimal_index + 7) / 8; // Index of first decimal limb
     u32* init_limbs = MGA_PUSH_ZERO_ARRAY(scratch.arena, u32, init_limbs_size);
 
-    printf("%u %u\n", init_limbs_size, init_decimal_limb);
-
     // Parsing decimal portion of number
     u32 shift = 28;
     for (u64 i = decimal_index + 1; i < str.size; i++) {
@@ -69,14 +67,31 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
         shift = (shift + 4) & 31;
     }
 
-    /*
-    - Shift limbs until decimal_limb is limbs_size - 1
-    - Calculate correct exp and size
-    */
+    u32 most_sig_digit = init_limbs_size - 1;
+    for (i64 i = init_limbs_size - 1; i >= 0; i--) {
+        if (init_limbs[i] != 0) {
+            most_sig_digit = i;
+            break;
+        }
+    }
 
+    u32 abs_size = MIN(most_sig_digit + 1, prec);
+
+    bigfloat out = {
+        .prec = prec,
+        .size = abs_size * (negative ? -1 : 1),
+        .exp = (i32)most_sig_digit - (i32)init_decimal_limb,
+        .limbs = MGA_PUSH_ZERO_ARRAY(arena, u32, prec)
+    };
+
+    u32 offset = (prec < most_sig_digit + 1) ? (most_sig_digit + 1 - prec) : 0;
+    for (u32 i = 0; i < abs_size; i++) {
+        out.limbs[i] = init_limbs[i + offset];
+    }
+    
     mga_scratch_release(scratch);
 
-    return (bigfloat){ 0 };
+    return out;
 }
 
 b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);

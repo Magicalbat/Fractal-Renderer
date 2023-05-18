@@ -180,7 +180,10 @@ int main(void) {
     };
     mg_arena* perm_arena = mga_create(&desc);
 
-    bf_from_str(perm_arena, STR8("123.123456789123"), 16, 2);
+    bigfloat a = bf_from_str(perm_arena, STR8("1234567890987654.123456789123"), 16, 4);
+    for (u32 i = 0; i < a.prec; i++) {
+        printf("%u\n", a.limbs[i]);
+    }
     //bf_from_str(perm_arena, STR8(".000000000000000000000000123456789123"), 16, 2);
 
     mga_destroy(perm_arena);
