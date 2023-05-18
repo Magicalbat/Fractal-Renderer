@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include "base/base.h"
+#include "math/math_bigfloat.h"
 #include "os/os_thread_pool.h"
 #include "gfx/gfx.h"
 
@@ -178,6 +179,9 @@ int main(void) {
         .error_callback = mga_err
     };
     mg_arena* perm_arena = mga_create(&desc);
+
+    bf_from_str(perm_arena, STR8("123.123456789123"), 16, 2);
+    //bf_from_str(perm_arena, STR8(".000000000000000000000000123456789123"), 16, 2);
 
     mga_destroy(perm_arena);
     

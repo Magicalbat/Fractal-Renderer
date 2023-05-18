@@ -11,18 +11,18 @@
 // https://github.com/Mr-4th-Programming/mr4th/blob/main/src/base/base_string.h
 
 typedef struct string8 {
-    u8* str;
     u64 size;
+    u8* str;
 } string8;
 
 typedef struct string16 {
-    u16* str;
     u64 size;
+    u16* str;
 } string16;
 
 typedef struct string32 {
-    u32* str;
     u64 size;
+    u32* str;
 } string32;
 
 typedef struct string8_node {
@@ -48,34 +48,24 @@ typedef struct string_decode {
     u32 size;
 } string_decode;
 
-#define STR8(s) ((string8){ (u8*)(s), sizeof(s)-1 })
+#define STR8(s) ((string8){ sizeof(s)-1, (u8*)s })
 
-string8 str8_create(u8* str, u64 size);
 string8 str8_from_range(u8* start, u8* end);
 string8 str8_from_cstr(u8* cstr);
 
 string8 str8_copy(mg_arena* arena, string8 str);
 u8*     str8_to_cstr(mg_arena* arena, string8 str);
 
-b8 str8_equals(string8 a, string8 b);
-b8 str8_contains(string8 a, string8 b);
+b32 str8_equals(string8 a, string8 b);
+b32 str8_contains(string8 a, string8 b);
 
-u64 str8_index_of(string8 str, u8 c);
-u64 str8_find_first(string8 a, string8 b);
-u64 str8_find_last(string8 a, string8 b);
+b32 str8_index_of(string8 str, u8 c, u64* index);
 
-string8 str8_prefix(string8 str, u64 size);
-string8 str8_postfix(string8 str, u64 size);
 string8 str8_substr(string8 str, u64 start, u64 end);
 string8 str8_substr_size(string8 str, u64 start, u64 size);
 
-string8 str8_cut_end_until(string8 str, u8 c);
-
 void str8_list_push_existing(string8_list* list, string8 str, string8_node* node);
 void str8_list_push(mg_arena* arena, string8_list* list, string8 str);
-
-string8_list str8_split(mg_arena* arena, string8 orig, string8 split);
-string8_list str8_split_char(mg_arena* arena, string8 orig, u8 split_char);
 
 string8 str8_concat(mg_arena* arena, string8_list list);
 string8 str8_join(mg_arena* arena, string8_list list, string8_join join);

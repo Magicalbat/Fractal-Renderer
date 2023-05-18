@@ -1,21 +1,81 @@
 #include "math_bigfloat.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 bigfloat bf_from_f32(mg_arena* arena, f32 num, u32 prec);
 bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec);
-static bigfloat bf_from_hex_str(mg_arena* arena, string8 str, u32 prec);
-bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec) {
-    if (base == 16)
-        return bf_from_hex_str(arena, str, prec);
 
-    fprintf(stderr, "Unsuporrted base %u", base);
+#define HEXCHAR_VAL(c) ((c) <= '9' ? (c) - '0' : tolower(c) - 'a' + 10)
+static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 negative);
+bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec) {
+    if (str.size == 0) {
+        fprintf(stderr, "Invalid string for bigfloat\n");
+        return (bigfloat){ 0 };
+    }
+
+    b32 negative = str.str[0] == '-';
+    if (negative) {
+        str.str += 1;
+        str.size--;
+    }
+
+    // Strip leading and trailing zeros
+    while (str.size > 0 && str.str[0] == '0') {
+        str.str += 1;
+        str.size--;
+    }
+    while (str.size > 0 && str.str[str.size - 1] == '0') {
+        str.size--;
+    }
+
+    if (base == 16)
+        return _bf_from_hex_str(arena, str, prec, negative);
+
+    fprintf(stderr, "Unsuporrted base %u\n", base);
     return (bigfloat) { 0 };
 }
-static bigfloat bf_from_hex_str(mg_arena* arena, string8 str, u32 prec) {
-    // TODO: create util function to "correct" bigfloat 
+static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 negative) {
+    u64 decimal_index = str.size;
+    str8_index_of(str, (u8)'.', &decimal_index);
+
+    mga_temp scratch = mga_scratch_get(&arena, 1);
+
+    u32 init_limbs_size = (decimal_index + 7) / 8 + (str.size - decimal_index + 7) / 8;
+    u32 init_decimal_limb = (str.size - decimal_index + 7) / 8; // Index of first decimal limb
+    u32* init_limbs = MGA_PUSH_ZERO_ARRAY(scratch.arena, u32, init_limbs_size);
+
+    printf("%u %u\n", init_limbs_size, init_decimal_limb);
+
+    // Parsing decimal portion of number
+    u32 shift = 28;
+    for (u64 i = decimal_index + 1; i < str.size; i++) {
+        u32 char_val = HEXCHAR_VAL(str.str[i]);
+        i64 limb_index = (i64)init_decimal_limb - 1 - (i - decimal_index - 1) / 8;
+        init_limbs[limb_index] |= char_val << shift;
+
+        if (shift == 0) shift = 32;
+        shift -= 4;
+    }
+
+    // Parsing integer portion of number
+    shift = 0;
+    for (i64 i = decimal_index - 1; i >= 0; i--) {
+        u32 char_val = HEXCHAR_VAL(str.str[i]);
+        u32 limb_index = ((decimal_index - 1 - i) / 8) + init_decimal_limb;
+        init_limbs[limb_index] |= char_val << shift;
+        shift = (shift + 4) & 31;
+    }
+
+    /*
+    - Shift limbs until decimal_limb is limbs_size - 1
+    - Calculate correct exp and size
+    */
+
+    mga_scratch_release(scratch);
+
     return (bigfloat){ 0 };
 }
 

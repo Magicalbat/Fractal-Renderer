@@ -5,11 +5,8 @@
 #include "base/base_defs.h"
 #include "base/base_str.h"
 
-string8 str8_create(u8* str, u64 size) {
-    return (string8){ str, size };
-}
 string8 str8_from_range(u8* start, u8* end) {
-    return (string8){ start, (u64)(end - start) };
+    return (string8){ (u64)(end - start), start };
 }
 string8 str8_from_cstr(u8* cstr) {
     u8* ptr = cstr;
@@ -36,7 +33,7 @@ u8* str8_to_cstr(mg_arena* arena, string8 str) {
     return out;
 }
 
-b8 str8_equals(string8 a, string8 b) {
+b32 str8_equals(string8 a, string8 b) {
     if (a.size != b.size)
         return false;
 
@@ -47,7 +44,7 @@ b8 str8_equals(string8 a, string8 b) {
     
     return true;
 }
-b8 str8_contains(string8 a, string8 b) {
+b32 str8_contains(string8 a, string8 b) {
     for (u64 i = 0; i < a.size - b.size + 1; i++) {
         b8 contains = true;
         for (u64 j = 0; j < b.size; j++) {
@@ -65,77 +62,24 @@ b8 str8_contains(string8 a, string8 b) {
     return false;
 }
 
-u64 str8_index_of(string8 str, u8 c) {
+b32 str8_index_of(string8 str, u8 c, u64* index) {
     for (u64 i = 0; i < str.size; i++) {
-        if (str.str[i] == c)
-            return i;
-    }
-
-    return (u64)(-1);
-}
-u64 str8_find_first(string8 a, string8 b) {
-    for (u64 i = 0; i < a.size - b.size + 1; i++) {
-        b8 contains = true;
-        for (u64 j = 0; j < b.size; j++) {
-            if (a.str[i + j] != b.str[j]) {
-                contains = false;
-                break;
-            }
-        }
-
-        if (contains) {
-            return i;
+        if (str.str[i] == c) {
+            *index = i;
+            return true;
         }
     }
-    return (u64)(-1);
-}
-u64 str8_find_last(string8 a, string8 b) {
-    u64 out = (u64)(-1);
-    for (u64 i = 0; i < a.size - b.size + 1; i++) {
-        b8 contains = true;
-        for (u64 j = 0; j < b.size; j++) {
-            if (a.str[i + j] != b.str[j]) {
-                contains = false;
-                break;
-            }
-        }
 
-        if (contains) {
-            out = i;
-        }
-    }
-    return out;
+    return false;
 }
 
-string8 str8_prefix(string8 str, u64 size) {
-    u64 clamped_size = MIN(size, str.size);
-    return (string8){ str.str, clamped_size };
-}
-string8 str8_postfix(string8 str, u64 size) {
-    u64 clamped_size = MIN(str.size, size);
-    u64 new_pos = str.size - clamped_size;
-    return (string8){ str.str + new_pos, clamped_size };
-}
 string8 str8_substr(string8 str, u64 start, u64 end) {
     u64 end_clamped = MIN(str.size, end);
     u64 start_clamped = MIN(start, end_clamped);
-    return (string8){ str.str + start_clamped, end_clamped - start_clamped };
+    return (string8){ end_clamped - start_clamped, str.str + start_clamped };
 }
 string8 str8_substr_size(string8 str, u64 start, u64 size) {
     return str8_substr(str, start, start + size);
-}
-
-string8 str8_cut_end_until(string8 str, u8 c) {
-    string8 out = str;
-
-    while (out.size > 0 && out.str[out.size - 1] != c) {
-        out.size--;
-    }
-
-    if (out.size != 0)
-        out.size--;
-
-    return out;
 }
 
 void str8_list_push_existing(string8_list* list, string8 str, string8_node* node) {
@@ -147,39 +91,6 @@ void str8_list_push_existing(string8_list* list, string8 str, string8_node* node
 void str8_list_push(mg_arena* arena, string8_list* list, string8 str) {
     string8_node* node = MGA_PUSH_ZERO_STRUCT(arena, string8_node);
     str8_list_push_existing(list, str, node);
-}
-string8_list str8_split(mg_arena* arena, string8 str, string8 split) {
-    string8_list list_out = (string8_list){ .total_size = 0 };
-
-    u8* ptr = str.str;
-    u8* word_first = ptr;
-    u8* end = ptr + str.size - split.size;
-    for (;ptr < end; ptr += 1) {
-        b8 split_found = true;
-        for (u64 i = 0; i < split.size; i++) {
-            if (ptr[i] != split.str[i]) {
-                split_found = false;
-                break;
-            }
-        }
-
-        if (split_found) {
-            if (word_first < ptr) {
-                str8_list_push(arena, &list_out, str8_from_range(word_first, ptr));
-            }
-            word_first = ptr + split.size;
-        }
-    }
-
-    if (word_first <= ptr) {
-        str8_list_push(arena, &list_out, str8_from_range(word_first, ptr + split.size));
-    }
-
-    return list_out;
-}
-string8_list str8_split_char(mg_arena* arena, string8 str, u8 split_char) {
-    string8 char_str = (string8){ .str=&split_char, .size=1 };
-    return str8_split(arena, str, char_str);
 }
 
 string8 str8_concat(mg_arena* arena, string8_list list) {
@@ -238,13 +149,13 @@ string8 str8_pushfv(mg_arena* arena, const char* fmt, va_list args) {
     string8 out = { 0 };
     if (size < init_size) {
         mga_pop(arena, init_size - size - 1);
-        out = (string8){ buffer, size };
+        out = (string8){ size, buffer };
     } else {
         // NOTE: This path may not work
         mga_pop(arena, init_size);
         u8* fixed_buff = MGA_PUSH_ARRAY(arena, u8, size + 1);
         u64 final_size = vsnprintf((char*)fixed_buff, size + 1, fmt, args);
-        out = (string8){ fixed_buff, final_size };
+        out = (string8){ final_size, fixed_buff };
     }
 
     va_end(args2);
