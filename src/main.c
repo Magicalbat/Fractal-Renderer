@@ -4,6 +4,52 @@
 #include "base/base.h"
 #include "math/math_bigfloat.h"
 #include "os/os_thread_pool.h"
+
+void mga_err(mga_error err);
+int main(void) {
+    mga_desc desc = {
+        .desired_max_size = MGA_MiB(16),
+        .desired_block_size = MGA_KiB(256),
+        .error_callback = mga_err
+    };
+    mg_arena* perm_arena = mga_create(&desc);
+
+    bigfloat a = bf_from_str(perm_arena, STR8("123456789000.00098765"), 16, 6);
+    bigfloat b = bf_from_str(perm_arena, STR8("0.000000098765"), 16, 2);
+    bigfloat c = {
+        .prec = 10,
+        .limbs = MGA_PUSH_ZERO_ARRAY(perm_arena, u32, 10)
+    };
+
+    bf_add_ip(&c, &a, &b);
+
+    printf("\n------------------\n");
+    printf("a.size: %d, b.size: %d\n", a.size, b.size);
+
+    printf("a.exp: %d, b.exp: %d\n\n", a.exp, b.exp);
+    
+    printf("a limbs: [\n");
+    for (u32 i = 0; i < a.prec; i++) {
+        printf("\t%u,\n", a.limbs[i]);
+    }
+    printf("]\n");
+
+    printf("b limbs: [\n");
+    for (u32 i = 0; i < b.prec; i++) {
+        printf("\t%u,\n", b.limbs[i]);
+    }
+    printf("]\n");
+
+    mga_destroy(perm_arena);
+
+    return 0;
+}
+
+void mga_err(mga_error err) {
+    printf("MGA ERROR %d: %s", err.code, err.msg);
+}
+
+#if 0
 #include "gfx/gfx.h"
 
 #include "math/math_vec.h"
@@ -170,8 +216,6 @@ static rect64 mouse_norm_rect(gfx_window* win) {
     return rect;
 }
 
-
-
 int main(void) {
     mga_desc desc = {
         .desired_max_size = MGA_MiB(16),
@@ -180,16 +224,6 @@ int main(void) {
     };
     mg_arena* perm_arena = mga_create(&desc);
 
-    bigfloat a = bf_from_str(perm_arena, STR8("1234567890987654.123456789123"), 16, 4);
-    for (u32 i = 0; i < a.prec; i++) {
-        printf("%u\n", a.limbs[i]);
-    }
-    //bf_from_str(perm_arena, STR8(".000000000000000000000000123456789123"), 16, 2);
-
-    mga_destroy(perm_arena);
-    
-    return 0;
-    
     fpng_init();
 
     gfx_window* win = gfx_win_create(perm_arena, WIDTH, HEIGHT, STR8("Fractal Renderer"));
@@ -448,3 +482,4 @@ void draw(gfx_window* win) {
 
     gfx_win_swap_buffers(win);
 }
+#endif

@@ -61,6 +61,13 @@ b32 str8_contains(string8 a, string8 b) {
 
     return false;
 }
+b32 str8_contains_char(string8 str, u8 c) {
+    for (u64 i = 0; i < str.size; i++) {
+        if (str.str[i] == c)
+            return true;
+    }
+    return false;
+}
 
 b32 str8_index_of(string8 str, u8 c, u64* index) {
     for (u64 i = 0; i < str.size; i++) {

@@ -28,6 +28,8 @@ bigfloat bf_div(mg_arena* arena, const bigfloat* a, const bigfloat* b, bigfloat*
 
 b32 bf_is_zero(const bigfloat* bf);
 b32 bf_equals(const bigfloat* a, const bigfloat* b);
+// - -> a < b, 0 -> a == b, + -> a > b
+i32 bf_cmp(const bigfloat* a, const bigfloat* b);
 
 string8 bf_to_str(mg_arena* arena, const bigfloat* bf, u32 base);
 string8 bf_print(const bigfloat* bf, u32 base);

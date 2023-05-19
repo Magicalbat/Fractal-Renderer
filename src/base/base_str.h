@@ -58,6 +58,7 @@ u8*     str8_to_cstr(mg_arena* arena, string8 str);
 
 b32 str8_equals(string8 a, string8 b);
 b32 str8_contains(string8 a, string8 b);
+b32 str8_contains_char(string8 str, u8 c);
 
 b32 str8_index_of(string8 str, u8 c, u64* index);
 

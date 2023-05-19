@@ -23,12 +23,31 @@ bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec) {
     }
 
     // Strip leading and trailing zeros
-    while (str.size > 0 && str.str[0] == '0') {
+    u64 post_decimal_size = 0;
+    u64 decimal_index = 0;
+    if (str8_index_of(str, (u8)'.', &decimal_index)) {
+        post_decimal_size = str.size - decimal_index - 1;
+    }
+    while (str.size > 2 + post_decimal_size && str.str[0] == '0') {
         str.str += 1;
         str.size--;
     }
-    while (str.size > 0 && str.str[str.size - 1] == '0') {
-        str.size--;
+    if (post_decimal_size) {
+        u64 init_pre_size = str.size - post_decimal_size;
+        while (str.size > (1 + init_pre_size) && str.str[str.size - 1] == '0') {
+            str.size--;
+        }
+    }
+
+    if (str8_equals(str, STR8("0")) || str8_equals(str, STR8(".0")) || str8_equals(str, STR8("0.0"))) {
+        bigfloat out = {
+            .prec = prec,
+            .size = 1 * (negative ? -1 : 1),
+            .exp = 0,
+            .limbs = MGA_PUSH_ZERO_ARRAY(arena, u32, prec)
+        };
+        
+        return out;
     }
 
     if (base == 16)
@@ -74,8 +93,15 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
             break;
         }
     }
+    u32 least_sig_digit = 0;
+    for (u32 i = 0; i < init_limbs_size; i++) {
+        if (init_limbs[i] != 0) {
+            least_sig_digit = i;
+            break;
+        }
+    }
 
-    u32 abs_size = MIN(most_sig_digit + 1, prec);
+    u32 abs_size = MIN(most_sig_digit + 1, prec) - least_sig_digit;
 
     bigfloat out = {
         .prec = prec,
@@ -84,9 +110,8 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
         .limbs = MGA_PUSH_ZERO_ARRAY(arena, u32, prec)
     };
 
-    u32 offset = (prec < most_sig_digit + 1) ? (most_sig_digit + 1 - prec) : 0;
     for (u32 i = 0; i < abs_size; i++) {
-        out.limbs[i] = init_limbs[i + offset];
+        out.limbs[i] = init_limbs[i + least_sig_digit];
     }
     
     mga_scratch_release(scratch);
@@ -94,7 +119,36 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
     return out;
 }
 
-b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
+b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+    if ((a->size ^ b->size) < 0) {
+        // a and b have different signs
+
+        // TODO: call sub functions
+    }
+
+    if (bf_cmp(a, b) < 0) {
+        const bigfloat* temp = a;
+        a = b;
+        b = temp;
+    }
+
+    u32 abs_asize = ABS(a->size);
+    u32 abs_bsize = ABS(b->size);
+
+    i64 min_exp_digit = MIN((i64)a->exp - abs_asize, (i64)b->exp - abs_bsize);
+    i64 max_exp_digit = a->exp;
+
+    u32 max_prec = (u32)(max_exp_digit - min_exp_digit);
+
+    printf("min: %ld, max: %ld, prec: %u\n", min_exp_digit, max_exp_digit, max_prec);
+
+    // goal: loop through from 0 to out->prec and add numbers
+    // min = MIN(exp - ABS(size))
+    // max = MAX(exp) (should be a->exp)
+    // Loop through as many digits as possible in the range and add
+
+    return false;
+}
 b32 bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 b32 bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 b32 bf_div_ip(bigfloat* q, const bigfloat* a, const bigfloat* b, bigfloat* r);
@@ -106,6 +160,31 @@ bigfloat bf_div(mg_arena* arena, const bigfloat* a, const bigfloat* b, bigfloat*
 
 b32 bf_is_zero(const bigfloat* bf);
 b32 bf_equals(const bigfloat* a, const bigfloat* b);
+i32 bf_cmp(const bigfloat* a, const bigfloat* b) {
+    if ((a->size ^ b->size) < 0) {
+        return a->size > b->size ? 1 : -1;
+    }
+    i32 sign = SIGN(a->size);
+
+    if (a->exp != b->exp) {
+        return (a->exp > b->exp ? 1 : -1) * sign;
+    }
+
+    i64 ai = ABS(a->size) - 1;
+    i64 bi = ABS(b->size) - 1;
+
+     if (ai != bi) {
+         return (ai > bi ? 1 : -1) * sign;
+     }
+    
+    for (; ai >= 0 && bi >= 0; ai--, bi--) {
+        if (a->limbs[ai] != b->limbs[bi]) {
+            return (a->limbs[ai] > b->limbs[bi] ? 1 : -1) * sign;
+        }
+    }
+
+    return 0;
+}
 
 string8 bf_to_str(mg_arena* arena, const bigfloat* bf, u32 base);
 string8 bf_print(const bigfloat* bf, u32 base);

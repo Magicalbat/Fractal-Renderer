@@ -38,6 +38,8 @@ STATIC_ASSERT(sizeof(f64) == 8, f64_size);
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define ABS(n) ((n) < 0 ? -(n) : (n))
+#define SIGN(n) ((n) < 0 ? -1 : 1)
 
 #define SLL_PUSH_FRONT(f, l, n) ((f) == 0 ? \
     ((f) = (l) = (n)) :                     \
