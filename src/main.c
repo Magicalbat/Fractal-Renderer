@@ -5,6 +5,8 @@
 #include "math/math_bigfloat.h"
 #include "os/os_thread_pool.h"
 
+#if 0
+
 void mga_err(mga_error err);
 int main(void) {
     mga_desc desc = {
@@ -37,7 +39,8 @@ void mga_err(mga_error err) {
     printf("MGA ERROR %d: %s", err.code, err.msg);
 }
 
-#if 0
+#else
+
 #include "gfx/gfx.h"
 
 #include "math/math_vec.h"
