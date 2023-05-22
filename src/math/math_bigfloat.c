@@ -56,6 +56,7 @@ bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec) {
     fprintf(stderr, "Unsuporrted base %u\n", base);
     return (bigfloat) { 0 };
 }
+
 static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 negative) {
     u64 decimal_index = str.size;
     str8_index_of(str, (u8)'.', &decimal_index);
@@ -103,7 +104,7 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
 
     u32 abs_size = MIN(most_sig_digit + 1, prec) - least_sig_digit;
 
-    bigfloat out = {
+    bigfloat out = (bigfloat){
         .prec = prec,
         .size = abs_size * (negative ? -1 : 1),
         .exp = (i32)most_sig_digit - (i32)init_decimal_limb,
@@ -120,34 +121,105 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
 }
 
 b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
-    if ((a->size ^ b->size) < 0) {
-        // a and b have different signs
+    assert(out != a && out != b);
 
-        // TODO: call sub functions
+    if ((a->size ^ b->size) < 0) {
+        // a + (-b) = a - b
+        // -a + b = -a - (-b)
+
+        // TODO: negate b and call sub functions
     }
 
-    if (bf_cmp(a, b) < 0) {
+    if (a->exp < b->exp) {
         const bigfloat* temp = a;
         a = b;
         b = temp;
     }
 
-    u32 abs_asize = ABS(a->size);
-    u32 abs_bsize = ABS(b->size);
+    u32 asize = ABS(a->size);
+    u32 bsize = ABS(b->size);
+    u32* a_limbs = a->limbs;
+    u32* b_limbs = b->limbs;
+    i32 exp_diff = a->exp - b->exp;
 
-    i64 min_exp_digit = MIN((i64)a->exp - abs_asize, (i64)b->exp - abs_bsize);
-    i64 max_exp_digit = a->exp;
+    if (asize > (i64)out->prec) {
+        a_limbs += asize - out->prec;
+        asize = out->prec;
+    }
+    // b is somewhere to the left of a
+    // exp_diff compensates for this
+    if (bsize + exp_diff > (i64)out->prec) {
+        b_limbs += bsize + exp_diff - out->prec;
+        bsize = (u32)MAX(0, (i64)out->prec - exp_diff); // this can make bsize negative
+    }
 
-    u32 max_prec = (u32)(max_exp_digit - min_exp_digit);
+    if ((i64)asize > exp_diff) {
+        // a and b overlap
 
-    printf("min: %ld, max: %ld, prec: %u\n", min_exp_digit, max_exp_digit, max_prec);
+        u32* add_out = NULL;
 
-    // goal: loop through from 0 to out->prec and add numbers
-    // min = MIN(exp - ABS(size))
-    // max = MAX(exp) (should be a->exp)
-    // Loop through as many digits as possible in the range and add
+        if (bsize + exp_diff <= asize) {
+            // a extends beyond b
+            // aaaaa
+            //   bb
 
-    return false;
+            out->size = asize;
+
+            u32 copy_size = asize - exp_diff - bsize;
+            memcpy(out->limbs, a_limbs, sizeof(u32) * copy_size);
+
+            add_out = out->limbs + copy_size; 
+            a_limbs += copy_size;
+            asize -= copy_size;
+        } else {
+            // b extends beyond a
+            // aaaa
+            //   bbbbb
+
+            out->size = bsize + exp_diff;
+
+            u32 copy_size = bsize + exp_diff - asize;
+            memcpy(out->limbs, b_limbs, sizeof(u32) * copy_size);
+
+            add_out = out->limbs + copy_size;
+            b_limbs += copy_size;
+            bsize -= copy_size;
+        }
+        out->exp = a->exp;
+
+        u32 carry = 0;
+        for (u32 i = 0; i < bsize; i++) {
+            u64 sum = (u64)a_limbs[i] + b_limbs[i];
+
+            add_out[i] = (u32)(sum & BIGFLOAT_MASK);
+            carry = (u32)(sum >> 32);
+        }
+        for (u32 i = bsize; i < asize; i++) {
+            u64 sum = (u64)a_limbs[i] + carry;
+
+            add_out[i] = (u32)(sum & BIGFLOAT_MASK);
+            carry = (u32)(sum >> 32);
+        }
+
+        out->limbs[out->size] = carry;
+        out->size += carry;
+        out->exp += carry;
+    } else {
+        // a and b do not overlap
+        // aaa
+        //     bb
+
+        memcpy(out->limbs, b_limbs, sizeof(u32) * bsize);
+        memset(out->limbs + bsize, 0, sizeof(u32) * (exp_diff - asize));
+        memcpy(out->limbs + bsize + exp_diff - asize, a_limbs, sizeof(u32) * asize);
+
+        out->size = bsize + exp_diff;
+        out->exp = a->exp;
+    }
+
+    out->size *= SIGN(a->size);
+
+    return true;
 }
 b32 bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 b32 bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);

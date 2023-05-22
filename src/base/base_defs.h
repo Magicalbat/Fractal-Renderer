@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <assert.h>
 
 typedef int8_t   i8;
 typedef int16_t  i16;
@@ -20,10 +21,8 @@ typedef i32 b32;
 typedef float  f32;
 typedef double f64;
 
-#define STATIC_ASSERT(c, label) typedef u8 static_assert_##label [(c) ? 1 : -1]
-
-STATIC_ASSERT(sizeof(f32) == 4, f32_size);
-STATIC_ASSERT(sizeof(f64) == 8, f64_size);
+static_assert(sizeof(f32) == 4, "f32 size");
+static_assert(sizeof(f64) == 8, "f64 size");
 
 #if defined(_WIN32)
 #   define PLATFORM_WIN32
