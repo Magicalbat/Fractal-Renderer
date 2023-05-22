@@ -5,8 +5,31 @@
 #include <stdio.h>
 #include <string.h>
 
+static void _bf_fix_leading_zeros(bigfloat* bf); 
+
+bigfloat bf_create(mg_arena* arena, u32 prec) {
+    return (bigfloat){
+        .prec = prec,
+        .size = 1,
+        .exp = 0,
+        .limbs = MGA_PUSH_ZERO_ARRAY(arena, u32, prec)
+    };
+}
 bigfloat bf_from_f32(mg_arena* arena, f32 num, u32 prec);
 bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec);
+
+void bf_set(bigfloat* a, const bigfloat* b) {
+    u32 abs_size = ABS(b->size);
+    u32 asize = MIN(abs_size, a->prec);
+    
+    a->exp = b->exp;
+    a->size = asize * SIGN(b->size);
+
+    u32 offset = (a->prec < abs_size) ? abs_size - a->prec : 0;
+    for (u32 i = 0; i < asize; i++) {
+        a->limbs[i] = b->limbs[i + offset];
+    }
+}
 
 #define HEXCHAR_VAL(c) ((c) <= '9' ? (c) - '0' : tolower(c) - 'a' + 10)
 static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 negative);
@@ -111,23 +134,38 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
         .limbs = MGA_PUSH_ZERO_ARRAY(arena, u32, prec)
     };
 
+    u32 offset = least_sig_digit;
+    if (prec < most_sig_digit + 1) {
+        offset += most_sig_digit + 1 - prec;
+    }
     for (u32 i = 0; i < abs_size; i++) {
-        out.limbs[i] = init_limbs[i + least_sig_digit];
+        out.limbs[i] = init_limbs[i + offset];
     }
     
     mga_scratch_release(scratch);
 
+    _bf_fix_leading_zeros(&out);
+    
     return out;
 }
 
-b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     assert(out != a && out != b);
 
     if ((a->size ^ b->size) < 0) {
         // a + (-b) = a - b
         // -a + b = -a - (-b)
 
-        // TODO: negate b and call sub functions
+        bigfloat neg_b = {
+            .prec = b->prec,
+            .size = -b->size,
+            .exp = b->exp,
+            .limbs = b->limbs
+        };
+
+        bf_sub_ip(out, a, &neg_b);
+        
+        return;
     }
 
     if (a->exp < b->exp) {
@@ -150,7 +188,7 @@ b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     // exp_diff compensates for this
     if (bsize + exp_diff > (i64)out->prec) {
         b_limbs += bsize + exp_diff - out->prec;
-        bsize = (u32)MAX(0, (i64)out->prec - exp_diff); // this can make bsize negative
+        bsize = (u32)MAX(0, (i64)out->prec - exp_diff);
     }
 
     if ((i64)asize > exp_diff) {
@@ -218,12 +256,32 @@ b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     }
 
     out->size *= SIGN(a->size);
-
-    return true;
 }
-b32 bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
-b32 bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
-b32 bf_div_ip(bigfloat* q, const bigfloat* a, const bigfloat* b, bigfloat* r);
+void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+    assert(out != a && out != b);
+
+    if ((a->size ^ b->size) < 0) {
+        // a and b hav different signs
+
+        // a - (-b) = a + b
+        // -a - b = -a + (-b)
+
+        bigfloat neg_b = {
+            .prec = b->prec,
+            .size = -b->size,
+            .exp = b->exp,
+            .limbs = b->limbs
+        };
+
+        bf_add_ip(out, a, &neg_b);
+        
+        return;
+    }
+
+    i32 sign = SIGN(a->size);
+}
+void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
+void bf_div_ip(bigfloat* q, const bigfloat* a, const bigfloat* b, bigfloat* r);
 
 bigfloat bf_add(mg_arena* arena, const bigfloat* a, const bigfloat* b);
 bigfloat bf_sub(mg_arena* arena, const bigfloat* a, const bigfloat* b);
@@ -374,4 +432,27 @@ void bf_print(const bigfloat* bf, u32 base) {
     printf("%.*s\n", (int)str.size, str.str);
 
     mga_scratch_release(scratch);
+}
+
+static void _bf_fix_leading_zeros(bigfloat* bf) {
+    u32 least_sig_digit = 0;
+    for (u32 i = 0; i < bf->prec; i++) {
+        if (bf->limbs[i] != 0) {
+            least_sig_digit = i;
+            break;
+        }
+    }
+
+    if (least_sig_digit == 0) {
+        return;
+    }
+
+    bf->exp += least_sig_digit;
+    u32 abs_size = ABS(bf->size) - least_sig_digit;
+
+    for (u32 i = 0; i < abs_size; i++) {
+        bf->limbs[i] = bf->limbs[i + least_sig_digit];
+    }
+
+    bf->size = abs_size * SIGN(bf->size);
 }

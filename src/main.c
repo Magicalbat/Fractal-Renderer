@@ -14,12 +14,9 @@ int main(void) {
     };
     mg_arena* perm_arena = mga_create(&desc);
 
-    bigfloat a = bf_from_str(perm_arena, STR8("123456789000.00098765"), 16, 6);
-    bigfloat b = bf_from_str(perm_arena, STR8("98765100000000000.123"), 16, 6);
-    bigfloat c = {
-        .prec = 10,
-        .limbs = MGA_PUSH_ZERO_ARRAY(perm_arena, u32, 10)
-    };
+    bigfloat a = bf_from_str(perm_arena, STR8("12345678987656000.00098765"), 16, 6);
+    bigfloat b = bf_from_str(perm_arena, STR8("98700000000"), 16, 4);
+    bigfloat c = bf_create(perm_arena, 10);
 
     bf_add_ip(&c, &a, &b);
 
@@ -29,25 +26,7 @@ int main(void) {
 
     printf("a: "); bf_print(&a, 16);
     printf("b: "); bf_print(&b, 16);
-    //printf("c: "); bf_print(&c, 16);
-    
-    /*printf("a limbs: [\n");
-    for (u32 i = 0; i < a.prec; i++) {
-        printf("\t%u,\n", a.limbs[i]);
-    }
-    printf("]\n");
-
-    printf("b limbs: [\n");
-    for (u32 i = 0; i < b.prec; i++) {
-        printf("\t%u,\n", b.limbs[i]);
-    }
-    printf("]\n");
-
-    printf("c limbs: [\n");
-    for (u32 i = 0; i < c.prec; i++) {
-        printf("\t%u,\n", c.limbs[i]);
-    }
-    printf("]\n");*/
+    printf("c: "); bf_print(&c, 16);
 
     mga_destroy(perm_arena);
 

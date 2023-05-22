@@ -13,14 +13,17 @@ typedef struct {
     u32* limbs; // digits of the number
 } bigfloat;
 
+bigfloat bf_create(mg_arena* arena, u32 prec);
 bigfloat bf_from_f32(mg_arena* arena, f32 num, u32 prec);
 bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec);
 bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec);
 
-b32 bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
-b32 bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
-b32 bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
-b32 bf_div_ip(bigfloat* q, const bigfloat* a, const bigfloat* b, bigfloat* r);
+void bf_set(bigfloat* a, const bigfloat* b);
+
+void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
+void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
+void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
+void bf_div_ip(bigfloat* q, const bigfloat* a, const bigfloat* b, bigfloat* r);
 
 bigfloat bf_add(mg_arena* arena, const bigfloat* a, const bigfloat* b);
 bigfloat bf_sub(mg_arena* arena, const bigfloat* a, const bigfloat* b);
