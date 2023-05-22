@@ -33,6 +33,6 @@ b32 bf_equals(const bigfloat* a, const bigfloat* b);
 i32 bf_cmp(const bigfloat* a, const bigfloat* b);
 
 string8 bf_to_str(mg_arena* arena, const bigfloat* bf, u32 base);
-string8 bf_print(const bigfloat* bf, u32 base);
+void bf_print(const bigfloat* bf, u32 base);
 
 #endif // MATH_BIGFLOAT_H

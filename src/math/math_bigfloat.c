@@ -53,7 +53,7 @@ bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec) {
     if (base == 16)
         return _bf_from_hex_str(arena, str, prec, negative);
 
-    fprintf(stderr, "Unsuporrted base %u\n", base);
+    fprintf(stderr, "Unsupported base %u for bf_from_str\n", base);
     return (bigfloat) { 0 };
 }
 
@@ -258,5 +258,120 @@ i32 bf_cmp(const bigfloat* a, const bigfloat* b) {
     return 0;
 }
 
-string8 bf_to_str(mg_arena* arena, const bigfloat* bf, u32 base);
-string8 bf_print(const bigfloat* bf, u32 base);
+static const char* _hex_chars = "0123456789abcdef";
+static string8 _bf_to_hex_str(mg_arena* arena, const bigfloat* bf);
+string8 bf_to_str(mg_arena* arena, const bigfloat* bf, u32 base) {
+    // TODO: make bf_is_zero
+    //if (bf_is_zero(bf)) {
+    //    return str8_copy(arena, STR8("0"));
+    //}
+
+    if (base == 16) {
+        return _bf_to_hex_str(arena, bf);
+    }
+
+    fprintf(stderr, "Unsupported base %u for bf_to_str\n", base);
+    return (string8){ 0 };
+}
+static string8 _bf_to_hex_str(mg_arena* arena, const bigfloat* bf) {
+    u32 abs_size = ABS(bf->size);
+
+    mga_temp scratch = mga_scratch_get(&arena, 1);
+
+    u32* limbs = bf->limbs;
+
+    string8 decimal_str = { 0 };
+    string8 integer_str = STR8("0");
+
+    i64 num_decimal = (i64)abs_size - bf->exp - 1;
+
+    if (num_decimal > 0) {
+        decimal_str.str = MGA_PUSH_ARRAY(scratch.arena, u8, num_decimal * 8);
+
+        u32 shifts = 8;
+        u32 cur_limb = *limbs;
+        while ((cur_limb & 0xf) == 0) {
+            cur_limb >>= 4;
+            shifts--;
+        }
+
+        u32 num_decimal_limbs = MIN(abs_size, num_decimal);
+        for (u32 i = 0; i < num_decimal_limbs; i++, limbs += 1, cur_limb = *limbs) {
+
+            for (u32 j = 0; j < shifts; j++) {
+                decimal_str.str[decimal_str.size++] = _hex_chars[cur_limb & 0xf];
+                cur_limb >>= 4;
+            }
+
+            shifts = 8;
+        }
+
+        for (u32 i = num_decimal_limbs; i < num_decimal; i++) {
+            for (u32 j = 0; j < 8; j++) {
+                decimal_str.str[decimal_str.size++] = '0';
+            }
+        }
+    }
+
+    i64 num_integer = (i64)bf->exp + 1;
+
+    if (num_integer > 0) {
+        integer_str.str = MGA_PUSH_ARRAY(scratch.arena, u8, num_integer * 8);
+        integer_str.size = 0;
+
+        u32 num_integer_limbs = MIN(abs_size, num_integer);
+
+        for (i64 i = 0; i < num_integer - num_integer_limbs; i++) {
+            for (u32 j = 0; j < 8; j++) {
+                integer_str.str[integer_str.size++] = '0';
+            }
+        }
+
+        u32 cur_limb = *limbs;
+        for (u32 i = 0; i < num_integer_limbs; i++, limbs += 1, cur_limb = *limbs) {
+            for (u32 j = 0; j < 8; j++) {
+                integer_str.str[integer_str.size++] = _hex_chars[cur_limb & 0xf];
+                cur_limb >>= 4;
+            }
+        }
+
+        while (integer_str.size > 0 && integer_str.str[integer_str.size - 1] == '0') {
+            integer_str.size--;
+        }
+    }
+
+    u64 out_size = integer_str.size + decimal_str.size + (decimal_str.size != 0) + (bf->size < 0);
+    string8 out = {
+        .size = out_size,
+        .str = MGA_PUSH_ZERO_ARRAY(arena, u8, out_size)
+    };
+    u64 pos = 0;
+
+    if (bf->size < 0) {
+        out.str[pos++] = '-';
+    }
+
+    for (i64 i = integer_str.size - 1; i >= 0; i--) {
+        out.str[pos++] = integer_str.str[i];
+    }
+
+    if (decimal_str.size != 0) {
+        out.str[pos++] = '.';
+
+        for (i64 i = decimal_str.size - 1; i >= 0; i--) {
+            out.str[pos++] = decimal_str.str[i];
+        }
+    }
+
+    mga_scratch_release(scratch);
+
+    return out;
+}
+void bf_print(const bigfloat* bf, u32 base) {
+    mga_temp scratch = mga_scratch_get(NULL, 0);
+
+    string8 str = bf_to_str(scratch.arena, bf, base);
+    printf("%.*s\n", (int)str.size, str.str);
+
+    mga_scratch_release(scratch);
+}
