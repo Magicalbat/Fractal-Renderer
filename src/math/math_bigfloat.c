@@ -469,9 +469,39 @@ void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
         bsize = out->prec;
     }
 
+    mga_temp scratch = mga_scratch_get(NULL, 0);
 
-    out->exp = a->exp + b->exp; // - (carry != 0)
+    u32 temp_size = asize + bsize;
+    u32* temp_out = MGA_PUSH_ZERO_ARRAY(scratch.arena, u32, temp_size);
+
+    u32 carry = 0;
+    for (u32 i = 0; i < asize; i++) {
+        carry = 0;
+        for (u32 j = 0; j < bsize; j++) {
+            u64 prod = (u64)alimbs[i] * blimbs[j] + temp_out[i + j] + carry;
+
+            temp_out[i + j] = (u32)(prod & BIGFLOAT_MASK);
+            carry = (u32)(prod >> 32);
+        }
+        temp_out[i + bsize] = carry;
+    }
+
+    u32 adjust = (temp_out[asize - 1 + bsize] == 0);
+    u32 out_size = temp_size - adjust;
+    if (out_size > out->prec) {
+        temp_out += out_size - out->prec;
+        out_size = out->prec;
+    }
+
+    out->size = out_size;
+    memcpy(out->limbs, temp_out, sizeof(u32) * out_size);
+
+    mga_scratch_release(scratch);
+
+    out->exp = a->exp + b->exp + !adjust;
     out->size *= sign;
+
+    //_bf_fix_leading_zeros(out);
 }
 void bf_div_ip(bigfloat* q, const bigfloat* a, const bigfloat* b, bigfloat* r);
 

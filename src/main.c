@@ -23,14 +23,14 @@ int main(void) {
     };
     mg_arena* perm_arena = mga_create(&desc);
 
-    const char* str_a = "9234567898765456788976324587923450982346";
-    const char* str_b = "2089898759876870982734781263487912347098";
+    const char* str_a = "87943890456784328934809";
+    const char* str_b = "0.0000001423465678";
 
     bigfloat a = bf_from_str(perm_arena, str8_from_cstr((u8*)str_a), 16, 6);
     bigfloat b = bf_from_str(perm_arena, str8_from_cstr((u8*)str_b), 16, 6);
     bigfloat c = bf_create(perm_arena, 10);
 
-    bf_sub_ip(&c, &a, &b);
+    bf_mul_ip(&c, &a, &b);
 
     printf("\n------------------\n");
     printf("a.size: %d, b.size: %d, c.size: %d\n", a.size, b.size, c.size);
@@ -52,7 +52,7 @@ int main(void) {
     mpf_set_str(ga, str_a, 16);
     mpf_set_str(gb, str_b, 16);
 
-    mpf_sub(gc, ga, gb);
+    mpf_mul(gc, ga, gb);
 
     mp_exp_t exp = 0;
     char* a_str = mpf_get_str(NULL, &exp, 16, 64, ga);
@@ -61,6 +61,7 @@ int main(void) {
     printf("a: %s\n", a_str);
     printf("b: %s\n", b_str);
     printf("c: %s\n", c_str);
+    printf("exp: %ld\n", exp);
 
     free(c_str);
     mpf_clear(ga);
