@@ -5,7 +5,14 @@
 #include "math/math_bigfloat.h"
 #include "os/os_thread_pool.h"
 
-#if 0
+#if 1
+
+#ifdef PLATFORM_LINUX
+
+#include "gmp.h"
+#include <stdlib.h>
+
+#endif
 
 void mga_err(mga_error err);
 int main(void) {
@@ -16,11 +23,14 @@ int main(void) {
     };
     mg_arena* perm_arena = mga_create(&desc);
 
-    bigfloat a = bf_from_str(perm_arena, STR8("12345678987656000.00098765"), 16, 6);
-    bigfloat b = bf_from_str(perm_arena, STR8("98700000000"), 16, 4);
+    const char* str_a = "9234567898765456788976324587923450982346";
+    const char* str_b = "2089898759876870982734781263487912347098";
+
+    bigfloat a = bf_from_str(perm_arena, str8_from_cstr((u8*)str_a), 16, 6);
+    bigfloat b = bf_from_str(perm_arena, str8_from_cstr((u8*)str_b), 16, 6);
     bigfloat c = bf_create(perm_arena, 10);
 
-    bf_add_ip(&c, &a, &b);
+    bf_sub_ip(&c, &a, &b);
 
     printf("\n------------------\n");
     printf("a.size: %d, b.size: %d, c.size: %d\n", a.size, b.size, c.size);
@@ -30,6 +40,35 @@ int main(void) {
     printf("b: "); bf_print(&b, 16);
     printf("c: "); bf_print(&c, 16);
 
+#ifdef PLATFORM_LINUX
+    
+    printf("\n------------------\n");
+
+    mpf_t ga, gb, gc;
+    mpf_init2(ga, 32 * 6);
+    mpf_init2(gb, 32 * 6);
+    mpf_init2(gc, 32 * 10);
+
+    mpf_set_str(ga, str_a, 16);
+    mpf_set_str(gb, str_b, 16);
+
+    mpf_sub(gc, ga, gb);
+
+    mp_exp_t exp = 0;
+    char* a_str = mpf_get_str(NULL, &exp, 16, 64, ga);
+    char* b_str = mpf_get_str(NULL, &exp, 16, 64, gb);
+    char* c_str = mpf_get_str(NULL, &exp, 16, 64, gc);
+    printf("a: %s\n", a_str);
+    printf("b: %s\n", b_str);
+    printf("c: %s\n", c_str);
+
+    free(c_str);
+    mpf_clear(ga);
+    mpf_clear(gb);
+    mpf_clear(gc);
+
+#endif
+    
     mga_destroy(perm_arena);
 
     return 0;

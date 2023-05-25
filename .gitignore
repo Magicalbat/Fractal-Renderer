@@ -9,3 +9,5 @@ compile_commands.json
 Makefile
 **.bat
 **.png
+src/third_party/gmp.h
+libgmp.a

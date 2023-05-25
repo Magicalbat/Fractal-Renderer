@@ -150,8 +150,6 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
 }
 
 void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
-    assert(out != a && out != b);
-
     if ((a->size ^ b->size) < 0) {
         // a + (-b) = a - b
         // -a + b = -a - (-b)
@@ -176,18 +174,19 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
 
     u32 asize = ABS(a->size);
     u32 bsize = ABS(b->size);
-    u32* a_limbs = a->limbs;
-    u32* b_limbs = b->limbs;
+    u32* alimbs = a->limbs;
+    u32* blimbs = b->limbs;
     i32 exp_diff = a->exp - b->exp;
 
-    if (asize > (i64)out->prec) {
-        a_limbs += asize - out->prec;
+    // Remove parts of a and b that go beyond out->prec
+    if (asize > out->prec) {
+        alimbs += asize - out->prec;
         asize = out->prec;
     }
     // b is somewhere to the left of a
     // exp_diff compensates for this
-    if (bsize + exp_diff > (i64)out->prec) {
-        b_limbs += bsize + exp_diff - out->prec;
+    if ((i64)bsize + exp_diff > (i64)out->prec) {
+        blimbs += bsize + exp_diff - out->prec;
         bsize = (u32)MAX(0, (i64)out->prec - exp_diff);
     }
 
@@ -204,10 +203,12 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
             out->size = asize;
 
             u32 copy_size = asize - exp_diff - bsize;
-            memcpy(out->limbs, a_limbs, sizeof(u32) * copy_size);
+            if (out != a) {
+                memcpy(out->limbs, alimbs, sizeof(u32) * copy_size);
+            }
 
             add_out = out->limbs + copy_size; 
-            a_limbs += copy_size;
+            alimbs += copy_size;
             asize -= copy_size;
         } else {
             // b extends beyond a
@@ -217,23 +218,25 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
             out->size = bsize + exp_diff;
 
             u32 copy_size = bsize + exp_diff - asize;
-            memcpy(out->limbs, b_limbs, sizeof(u32) * copy_size);
+            if (out != b) {
+                memcpy(out->limbs, blimbs, sizeof(u32) * copy_size);
+            }
 
             add_out = out->limbs + copy_size;
-            b_limbs += copy_size;
+            blimbs += copy_size;
             bsize -= copy_size;
         }
         out->exp = a->exp;
 
         u32 carry = 0;
         for (u32 i = 0; i < bsize; i++) {
-            u64 sum = (u64)a_limbs[i] + b_limbs[i];
+            u64 sum = (u64)alimbs[i] + blimbs[i];
 
             add_out[i] = (u32)(sum & BIGFLOAT_MASK);
             carry = (u32)(sum >> 32);
         }
         for (u32 i = bsize; i < asize; i++) {
-            u64 sum = (u64)a_limbs[i] + carry;
+            u64 sum = (u64)alimbs[i] + carry;
 
             add_out[i] = (u32)(sum & BIGFLOAT_MASK);
             carry = (u32)(sum >> 32);
@@ -247,9 +250,15 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
         // aaa
         //     bb
 
-        memcpy(out->limbs, b_limbs, sizeof(u32) * bsize);
+        if (out != b) {
+            memcpy(out->limbs, blimbs, sizeof(u32) * bsize);
+        }
+        
         memset(out->limbs + bsize, 0, sizeof(u32) * (exp_diff - asize));
-        memcpy(out->limbs + bsize + exp_diff - asize, a_limbs, sizeof(u32) * asize);
+        
+        if (out != a) {
+            memcpy(out->limbs + bsize + exp_diff - asize, alimbs, sizeof(u32) * asize);
+        }
 
         out->size = bsize + exp_diff;
         out->exp = a->exp;
@@ -258,8 +267,6 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     out->size *= SIGN(a->size);
 }
 void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
-    assert(out != a && out != b);
-
     if ((a->size ^ b->size) < 0) {
         // a and b hav different signs
 
@@ -279,8 +286,193 @@ void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     }
 
     i32 sign = SIGN(a->size);
+
+    if (a->exp < b->exp) {
+        const bigfloat* temp = a;
+        a = b;
+        b = temp;
+
+        sign *= -1;
+    }
+
+    u32 asize = ABS(a->size);
+    u32 bsize = ABS(b->size);
+    u32* alimbs = a->limbs;
+    u32* blimbs = b->limbs;
+    i32 exp_diff = a->exp - b->exp;
+
+    // Remove parts of a and b that extend beyond prec
+    if (asize > out->prec) {
+        alimbs += (asize - out->prec);
+        asize = out->prec;
+    }
+
+    if (bsize + exp_diff > out->prec) {
+        blimbs += (bsize + exp_diff) - out->prec;
+        bsize = MAX(0, (i64)out->prec - exp_diff);
+    }
+
+    if (exp_diff > (i64)out->prec) {
+        // b is canceled
+
+        if (out != a) {
+            memcpy(out->limbs, alimbs, sizeof(u32) * asize);
+        }
+        out->size = asize * sign;
+        out->exp = a->exp;
+
+        return;
+    }
+
+    out->exp = a->exp;
+    if ((i64)asize > exp_diff) {
+        // a and b partially overlap
+
+        u32* sub_out = out->limbs;
+
+        if (exp_diff == 0) {
+            if (bf_cmp(a, b) < 0) {
+                u32 temp_asize = asize;
+                asize = bsize;
+                bsize = temp_asize;
+
+                u32* temp_alimbs = alimbs;
+                alimbs = blimbs;
+                blimbs = temp_alimbs;
+
+                sign *= -1;
+            }
+            
+            if (asize < bsize) {
+                // b extends beyond a
+                // aaa
+                // bbbbb
+
+                out->size = bsize;
+
+                u32 offset = bsize - asize;
+
+                u32 borrow = 0;
+                for (u32 i = 0; i < offset; i++) {
+                    i64 diff = (i64)0 - blimbs[i] - borrow;
+
+                    sub_out[i] = (u32)diff;
+                    borrow = diff < 0;
+                }
+                for (u32 i = offset; i < bsize; i++) {
+                    i64 diff = (i64)alimbs[i - offset] - blimbs[i] - borrow;
+
+                    sub_out[i] = (u32)diff;
+                    borrow = diff < 0;
+                }
+            } else {
+                // a extends beyond b
+                // aaaaa
+                // bbb
+                
+                out->size = asize;
+    
+                u32 copy_size = asize - bsize;
+                if (out != a) {
+                    memcpy(out->limbs, alimbs, sizeof(u32) * copy_size);
+                }
+                
+                sub_out += copy_size;
+                alimbs += copy_size;
+                asize -= copy_size;
+                
+                u32 borrow = 0;
+                for (u32 i = 0; i < bsize; i++) {
+                    i64 diff = (i64)alimbs[i] - blimbs[i] - borrow;
+    
+                    sub_out[i] = (u32)diff;
+                    borrow = diff < 0;
+                }
+            }
+        } else { // exp_diff != 0
+            u32 borrow = 0;
+
+            if (asize > bsize + exp_diff) {
+                // aaaaa
+                //   bb 
+
+                out->size = asize;
+
+                u32 copy_size = asize - (bsize + exp_diff);
+                if (out != a) {
+                    memcpy(sub_out, alimbs, sizeof(u32) * copy_size);
+                }
+
+                sub_out += copy_size;
+                alimbs += copy_size;
+                asize = (u32)MAX(0, (i64)asize - copy_size);
+            } else {
+                // aaaa
+                //   bbbb
+
+                out->size = bsize + exp_diff;
+
+                u32 sub_size = bsize + exp_diff - asize;
+
+                for (u32 i = 0; i < sub_size; i++) {
+                    i64 diff = (i64)0 - blimbs[i] - borrow;
+
+                    sub_out[i] = (u32)diff;
+                    borrow = diff < 0;
+                }
+
+                sub_out += sub_size;
+                blimbs += sub_size;
+                bsize = (u32)MAX(0, (i64)bsize - sub_size);
+            }
+
+            for (u32 i = 0; i < bsize; i++) {
+                i64 diff = (i64)alimbs[i] - blimbs[i] - borrow;
+
+                sub_out[i] = (u32)diff;
+                borrow = diff < 0;
+            }
+            for (u32 i = bsize; i < asize; i++) {
+                i64 diff = (i64)alimbs[i] - borrow;
+
+                sub_out[i] = (u32)diff;
+                borrow = diff < 0;
+            }
+        }
+    } else {
+        // a and b do not overlap
+    }
+
+    _bf_fix_leading_zeros(out);
+    out->size *= sign;
 }
-void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
+void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+    if (bf_is_zero(a) || bf_is_zero(b)) {
+        out->size = 1;
+        out->exp = 0;
+        memset(out->limbs, 0, sizeof(u32) * out->prec);
+    }
+
+    i32 sign = SIGN(a->size) * SIGN(b->size);
+
+    u32 asize = ABS(a->size);
+    u32 bsize = ABS(b->size);
+    u32* alimbs = a->limbs;
+    u32* blimbs = b->limbs;
+
+    if (asize > out->prec) {
+        alimbs += (asize - out->prec);
+        asize = out->prec;
+    }
+    if (bsize > out->prec) {
+        blimbs += (bsize - out->prec);
+        bsize = out->prec;
+    }
+
+
+    out->exp = a->exp + b->exp; // - (carry != 0)
+    out->size *= sign;
+}
 void bf_div_ip(bigfloat* q, const bigfloat* a, const bigfloat* b, bigfloat* r);
 
 bigfloat bf_add(mg_arena* arena, const bigfloat* a, const bigfloat* b);
@@ -288,8 +480,23 @@ bigfloat bf_sub(mg_arena* arena, const bigfloat* a, const bigfloat* b);
 bigfloat bf_mul(mg_arena* arena, const bigfloat* a, const bigfloat* b);
 bigfloat bf_div(mg_arena* arena, const bigfloat* a, const bigfloat* b, bigfloat* r);
 
-b32 bf_is_zero(const bigfloat* bf);
-b32 bf_equals(const bigfloat* a, const bigfloat* b);
+b32 bf_is_zero(const bigfloat* bf) {
+    return ABS(bf->size) == 1 && bf->prec > 0 && bf->limbs[0] == 0;
+}
+b32 bf_equals(const bigfloat* a, const bigfloat* b) {
+    if (a->exp != b->exp || a->size != b->size) {
+        return false;
+    }
+
+    u32 abs_size = ABS(a->size);
+
+    for (u32 i = 0; i < abs_size; i++) {
+        if (a->limbs[i] != b->limbs[i])
+            return false;
+    }
+
+    return true;
+}
 i32 bf_cmp(const bigfloat* a, const bigfloat* b) {
     if ((a->size ^ b->size) < 0) {
         return a->size > b->size ? 1 : -1;
@@ -303,10 +510,6 @@ i32 bf_cmp(const bigfloat* a, const bigfloat* b) {
     i64 ai = ABS(a->size) - 1;
     i64 bi = ABS(b->size) - 1;
 
-     if (ai != bi) {
-         return (ai > bi ? 1 : -1) * sign;
-     }
-    
     for (; ai >= 0 && bi >= 0; ai--, bi--) {
         if (a->limbs[ai] != b->limbs[bi]) {
             return (a->limbs[ai] > b->limbs[bi] ? 1 : -1) * sign;
@@ -319,10 +522,9 @@ i32 bf_cmp(const bigfloat* a, const bigfloat* b) {
 static const char* _hex_chars = "0123456789abcdef";
 static string8 _bf_to_hex_str(mg_arena* arena, const bigfloat* bf);
 string8 bf_to_str(mg_arena* arena, const bigfloat* bf, u32 base) {
-    // TODO: make bf_is_zero
-    //if (bf_is_zero(bf)) {
-    //    return str8_copy(arena, STR8("0"));
-    //}
+    if (bf_is_zero(bf)) {
+        return str8_copy(arena, STR8("0"));
+    }
 
     if (base == 16) {
         return _bf_to_hex_str(arena, bf);
