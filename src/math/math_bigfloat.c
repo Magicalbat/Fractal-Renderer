@@ -15,6 +15,29 @@ bigfloat bf_create(mg_arena* arena, u32 prec) {
         .limbs = MGA_PUSH_ZERO_ARRAY(arena, u32, prec)
     };
 }
+
+/*typedef struct {
+    u16 sign, exponent;
+    u32 mantissa;
+} float_parts;
+typedef union {
+    f32 num; u32 bits;
+} f32_bits;
+typedef union {
+    f64 num; u64 bits;
+} f64_bits;
+
+float_parts f32_get_parts(f32 num) {
+    f32_bits bits = { .num = num };
+    float_parts out = { 0 };
+
+    out.sign = bits.bits >> 31;
+    out.exponent = (bits.bits >> 23) & 0xff;
+    out.mantissa = bits.bits & 0x7FFFFF;
+
+    return out;
+}*/
+
 bigfloat bf_from_f32(mg_arena* arena, f32 num, u32 prec);
 bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec);
 
@@ -503,7 +526,18 @@ void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
 
     //_bf_fix_leading_zeros(out);
 }
-void bf_div_ip(bigfloat* q, const bigfloat* a, const bigfloat* b, bigfloat* r);
+void bf_div_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+    if (bf_is_zero(b)) {
+        fprintf(stderr, "Cannot divide bigfloat by zero");
+        return;
+    }
+    if (bf_is_zero(a)) {
+        if (out != a) {
+            bf_set(out, a);
+        }
+        return;
+    }
+}
 
 bigfloat bf_add(mg_arena* arena, const bigfloat* a, const bigfloat* b);
 bigfloat bf_sub(mg_arena* arena, const bigfloat* a, const bigfloat* b);

@@ -23,7 +23,7 @@ void bf_set(bigfloat* a, const bigfloat* b);
 void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
-void bf_div_ip(bigfloat* q, const bigfloat* a, const bigfloat* b, bigfloat* r);
+void bf_div_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 
 bigfloat bf_add(mg_arena* arena, const bigfloat* a, const bigfloat* b);
 bigfloat bf_sub(mg_arena* arena, const bigfloat* a, const bigfloat* b);
