@@ -22,46 +22,54 @@ int main(void) {
         .error_callback = mga_err
     };
     mg_arena* perm_arena = mga_create(&desc);
-
+    
     const char* str_a = "87943890456784328934809";
-    const char* str_b = "0.0000001423465678";
+    const char* str_b = "5678987654";
 
-    bigfloat a = bf_from_str(perm_arena, str8_from_cstr((u8*)str_a), 16, 6);
-    bigfloat b = bf_from_str(perm_arena, str8_from_cstr((u8*)str_b), 16, 6);
-    bigfloat c = bf_create(perm_arena, 10);
+    u32 csize = 3;
 
-    bf_mul_ip(&c, &a, &b);
+    bigfloat a = bf_from_str(perm_arena, str8_from_cstr((u8*)str_a), 16, csize);
+    bigfloat b = bf_from_str(perm_arena, str8_from_cstr((u8*)str_b), 16, csize);
+    bigfloat c = bf_create(perm_arena, csize);
 
-    printf("\n------------------\n");
-    printf("a.size: %d, b.size: %d, c.size: %d\n", a.size, b.size, c.size);
-    printf("a.exp: %d, b.exp: %d, c.exp: %d\n\n", a.exp, b.exp, c.exp);
+    bf_div_ip(&c, &a, &b);
 
-    printf("a: "); bf_print(&a, 16);
-    printf("b: "); bf_print(&b, 16);
+    //printf("\n------------------\n");
+    //printf("a.size: %d, b.size: %d, c.size: %d\n", a.size, b.size, c.size);
+    //printf("a.exp: %d, b.exp: %d, c.exp: %d\n\n", a.exp, b.exp, c.exp);
+
+    //printf("a: "); bf_print(&a, 16);
+    //printf("b: "); bf_print(&b, 16);
+
+    /*printf("c limbs: [\n");
+    for (u32 i = 0; i < (u32)ABS(c.size); i++) {
+        printf("\t%u,\n", c.limbs[i]);
+    }
+    printf("]\n");*/
+    
     printf("c: "); bf_print(&c, 16);
 
 #ifdef PLATFORM_LINUX
     
-    printf("\n------------------\n");
+    //printf("\n------------------\n");
 
     mpf_t ga, gb, gc;
     mpf_init2(ga, 32 * 6);
     mpf_init2(gb, 32 * 6);
-    mpf_init2(gc, 32 * 10);
+    mpf_init2(gc, 32 * csize);
 
     mpf_set_str(ga, str_a, 16);
     mpf_set_str(gb, str_b, 16);
 
-    mpf_mul(gc, ga, gb);
+    mpf_div(gc, ga, gb);
 
     mp_exp_t exp = 0;
-    char* a_str = mpf_get_str(NULL, &exp, 16, 64, ga);
-    char* b_str = mpf_get_str(NULL, &exp, 16, 64, gb);
+    //char* a_str = mpf_get_str(NULL, &exp, 16, 64, ga);
+    //char* b_str = mpf_get_str(NULL, &exp, 16, 64, gb);
     char* c_str = mpf_get_str(NULL, &exp, 16, 64, gc);
-    printf("a: %s\n", a_str);
-    printf("b: %s\n", b_str);
+    //printf("a: %s\n", a_str);
+    //printf("b: %s\n", b_str);
     printf("c: %s\n", c_str);
-    printf("exp: %ld\n", exp);
 
     free(c_str);
     mpf_clear(ga);
@@ -109,6 +117,10 @@ void mga_err(mga_error err) {
 #define IMG_HEIGHT 1080
 
 typedef struct {
+    bigfloat r, i;
+} complex_bf;
+
+typedef struct {
     f64 x, y, w, h;
 } rect64;
 
@@ -122,29 +134,33 @@ typedef struct {
     u32 img_height;
     u32 start_y;
     u32 height;
-    complexd complex_dim;
-    complexd complex_center;
+    complex_bf* complex_dim;
+    complex_bf* complex_center;
     u32 iterations;
 } mandelbrot_args;
 
 void render_mandelbrot_section(void* void_args) {
     mandelbrot_args* args = (mandelbrot_args*)void_args;
+
+    mga_temp scratch = mga_scratch_get(NULL, 0);
+
+    complex_bf z = {
+        .r = bf_create(scratch.arena, args->complex_center->r.prec),
+        .i = bf_create(scratch.arena, args->complex_center->r.prec)
+    };
+    complex_bf c = {
+        .r = bf_create(scratch.arena, z.r.prec),
+        .i = bf_create(scratch.arena, z.I.prec)
+    };
     
     for (u32 y = args->start_y; y < args->start_y + args->height; y++) {
         for (u32 x = 0; x < args->img_width; x++) {
-            #if 1
-            complexd z = { 0 };
-            complexd c = {
+            bf_set_zero(&z.r);
+            bf_set_zero(&z.i);
+            complex_bf c = {
                 (((f64)x / (f64)args->img_width) - 0.5) * args->complex_dim.r + args->complex_center.r,
                 (((f64)y / (f64)args->img_height) - 0.5) * args->complex_dim.i + args->complex_center.i
             };
-            #else
-            complexd c = { 0.975, -1.175 };
-            complexd z = {
-                (((f64)x / (f64)args->img_width) - 0.5) * args->complex_dim.r + args->complex_center.r,
-                (((f64)y / (f64)args->img_height) - 0.5) * args->complex_dim.i + args->complex_center.i
-            };
-            #endif
 
             f32 n = (f32)args->iterations - 1.0;
 
@@ -173,6 +189,8 @@ void render_mandelbrot_section(void* void_args) {
             }
         }
     }
+
+    mga_temp_end(scratch);
 }
 
 #define NUM_THREADS 8

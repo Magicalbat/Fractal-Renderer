@@ -14,21 +14,19 @@ typedef struct {
 } bigfloat;
 
 bigfloat bf_create(mg_arena* arena, u32 prec);
-bigfloat bf_from_f32(mg_arena* arena, f32 num, u32 prec);
 bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec);
+bigfloat bf_from_i64(mg_arena* arena, i64 num, u32 prec);
 bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec);
 
 void bf_set(bigfloat* a, const bigfloat* b);
+void bf_set_f64(bigfloat* bf, f64 num);
+void bf_set_i64(bigfloat* bf, i64 num);
+void bf_set_zero(bigfloat* bf);
 
 void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
 void bf_div_ip(bigfloat* out, const bigfloat* a, const bigfloat* b);
-
-bigfloat bf_add(mg_arena* arena, const bigfloat* a, const bigfloat* b);
-bigfloat bf_sub(mg_arena* arena, const bigfloat* a, const bigfloat* b);
-bigfloat bf_mul(mg_arena* arena, const bigfloat* a, const bigfloat* b);
-bigfloat bf_div(mg_arena* arena, const bigfloat* a, const bigfloat* b, bigfloat* r);
 
 b32 bf_is_zero(const bigfloat* bf);
 b32 bf_equals(const bigfloat* a, const bigfloat* b);

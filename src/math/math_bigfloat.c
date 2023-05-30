@@ -15,31 +15,16 @@ bigfloat bf_create(mg_arena* arena, u32 prec) {
         .limbs = MGA_PUSH_ZERO_ARRAY(arena, u32, prec)
     };
 }
-
-/*typedef struct {
-    u16 sign, exponent;
-    u32 mantissa;
-} float_parts;
-typedef union {
-    f32 num; u32 bits;
-} f32_bits;
-typedef union {
-    f64 num; u64 bits;
-} f64_bits;
-
-float_parts f32_get_parts(f32 num) {
-    f32_bits bits = { .num = num };
-    float_parts out = { 0 };
-
-    out.sign = bits.bits >> 31;
-    out.exponent = (bits.bits >> 23) & 0xff;
-    out.mantissa = bits.bits & 0x7FFFFF;
-
+bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec) {
+    bigfloat out = bf_create(arena, prec);
+    bf_set_f64(&out, num);
     return out;
-}*/
-
-bigfloat bf_from_f32(mg_arena* arena, f32 num, u32 prec);
-bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec);
+}
+bigfloat bf_from_i64(mg_arena* arena, i64 num, u32 prec) {
+    bigfloat out = bf_create(arena, prec);
+    bf_set_i64(&out, num);
+    return out;
+}
 
 void bf_set(bigfloat* a, const bigfloat* b) {
     u32 abs_size = ABS(b->size);
@@ -52,6 +37,62 @@ void bf_set(bigfloat* a, const bigfloat* b) {
     for (u32 i = 0; i < asize; i++) {
         a->limbs[i] = b->limbs[i + offset];
     }
+}
+
+typedef struct {
+    u16 sign, exponent;
+    u64 mantissa;
+} float_parts;
+typedef union {
+    f64 num; u64 bits;
+} f64_bits;
+
+float_parts f64_get_parts(f64 num) {
+    f64_bits bits = { .num = num };
+    float_parts out = { 0 };
+
+    out.sign = bits.bits >> 63;
+    out.exponent = (bits.bits >> 52) & 0x7ff;
+    out.mantissa = bits.bits & 0xfffffffffffff;
+
+    return out;
+}
+void bf_set_f64(bigfloat* bf, f64 num) {
+    if (isnan(num) || isinf(num)) {
+        fprintf(stderr, "Cannot set bigfloat to nan or inf\n");
+        return;
+    }
+    
+    float_parts parts = f64_get_parts(num);
+    
+    i32 exp = (i32)parts.exponent - 1023;
+    u64 mantissa = parts.mantissa | ((u64)1 << 53);
+
+    UNUSED(bf);
+    UNUSED(exp);
+    UNUSED(mantissa);
+}
+void bf_set_i64(bigfloat* bf, i64 num) {
+    u32 abs_size = MIN(bf->prec, 2);
+    i32 sign = SIGN(num);
+
+    bf->size = (i32)abs_size * sign;
+    bf->exp = 1;
+    num *= sign;
+
+    u32 temp_limbs[2] = { num & BIGFLOAT_MASK, num >> 32 };
+    for (i32 i = abs_size; i >= 0; i--) {
+        bf->limbs[i] = temp_limbs[i];
+    }
+    
+    _bf_fix_leading_zeros(bf);
+
+}
+void bf_set_zero(bigfloat* bf) {
+    bf->exp = 0;
+    bf->size = 1;
+
+    memset(bf->limbs, 0, sizeof(u32) * bf->prec);
 }
 
 #define HEXCHAR_VAL(c) ((c) <= '9' ? (c) - '0' : tolower(c) - 'a' + 10)
@@ -526,7 +567,28 @@ void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
 
     //_bf_fix_leading_zeros(out);
 }
+static u32 _u32_leading_zeros(u32 x) {
+#ifdef __GNUC__
+    return (u32)__builtin_clz(x);
+#else
+    i32 n = 32;
+    u32 y;
+    
+    y = x >> 16; if (y != 0) { n = n - 16; x = y; }
+    y = x >>  8; if (y != 0) { n = n -  8; x = y; }
+    y = x >>  4; if (y != 0) { n = n -  4; x = y; }
+    y = x >>  2; if (y != 0) { n = n -  2; x = y; }
+    y = x >>  1; if (y != 0) return n - 2;
+    return n - x;
+#endif
+}
 void bf_div_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+    if (out->prec < 2) {
+        // I cannot be bothered to make this work 
+        fprintf(stderr, "Cannot divide to output with prec less that 2\n");
+        return;
+    }
+    
     if (bf_is_zero(b)) {
         fprintf(stderr, "Cannot divide bigfloat by zero");
         return;
@@ -537,12 +599,107 @@ void bf_div_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
         }
         return;
     }
-}
 
-bigfloat bf_add(mg_arena* arena, const bigfloat* a, const bigfloat* b);
-bigfloat bf_sub(mg_arena* arena, const bigfloat* a, const bigfloat* b);
-bigfloat bf_mul(mg_arena* arena, const bigfloat* a, const bigfloat* b);
-bigfloat bf_div(mg_arena* arena, const bigfloat* a, const bigfloat* b, bigfloat* r);
+    i32 sign = SIGN(a->size) * SIGN(b->size);
+    u32 asize = ABS(a->size);
+    u32 bsize = ABS(b->size);
+    u32* alimbs = a->limbs;
+    u32* blimbs = b->limbs;
+
+    i64 expected_out_size = (i64)asize - bsize + 1;
+    i64 out_size = out->prec;
+
+    i64 zeros = (i64)out_size - expected_out_size;
+
+    if (zeros < 0) {
+        // Shorten a
+        alimbs += -zeros;
+        asize -= -zeros;
+        zeros = 0;
+    }
+
+    mga_temp scratch = mga_scratch_get(NULL, 0);
+
+    u32 norm_asize = asize + zeros + 1;
+    u32* norm_a = MGA_PUSH_ZERO_ARRAY(scratch.arena, u32, norm_asize);
+    memcpy(norm_a + zeros, alimbs, sizeof(u32) * asize);
+    u32* norm_b = MGA_PUSH_ZERO_ARRAY(scratch.arena, u32, bsize);
+
+    u32 shift = _u32_leading_zeros(blimbs[bsize - 1]);
+    norm_a[norm_asize - 1] = norm_a[norm_asize - 2] >> (32 - shift);
+    for (i64 i = norm_asize - 2; i > 0; i--) {
+        norm_a[i] = (norm_a[i] << shift) | (norm_a[i - 1] >> (32 - shift));
+    }
+    norm_a[0] <<= shift;
+    
+    for (i64 i = bsize - 1; i > 0; i--) {
+        norm_b[i] = (blimbs[i] << shift) | (blimbs[i - 1] >> (32 - shift));
+    }
+    norm_b[0] = blimbs[0] << shift;
+
+    //memset(out->limbs, 0, sizeof(u32) * out->prec);
+    
+    // Main loop for long division
+    // calculating digits of the quotient
+    for (i64 j = (i64)norm_asize - bsize - 1; j >= 0; j--) {
+        // estimated quotient digit
+        u64 qhat = (((u64)norm_a[bsize + j] << 32) | (u64)norm_a[bsize + j - 1]) / norm_b[bsize - 1];
+        //  remainder of estimated quotient
+        u64 rhat = (((u64)norm_a[bsize + j] << 32) | (u64)norm_a[bsize + j - 1]) % norm_b[bsize - 1];
+        
+        // initial correction of qhat
+        // checking if qhat is still correct for the next digit (I think)
+        if (bsize >= 2) {
+            while (qhat >= BIGFLOAT_BASE || qhat * norm_b[bsize - 2] > ((rhat << 32) | norm_a[norm_asize + j - 3])) {
+                qhat--;
+                rhat += norm_b[bsize - 1];
+                
+                if (rhat >= BIGFLOAT_BASE)
+                    break;
+            }   
+        }
+        
+
+        if (qhat == 0)
+            continue;
+        
+        // multiply and subtract
+        // a -= qhat * b
+        i64 carry = 0, diff = 0;
+        for (u32 i = 0; i < bsize; i++) {
+            u64 product = (u64)norm_b[i] * qhat;
+            diff = (i64)norm_a[i + j] - carry - (product & BIGFLOAT_MASK);
+            norm_a[i + j] = (u32)diff; // I guess it is okay for it to overflow
+
+            // carry from multiply - subtraction borrow
+            carry = (product >> 32) - (diff >> 32);
+        }
+        diff = norm_a[j + bsize] - carry;
+        norm_a[j + bsize] = (u32)diff;
+
+        // Last subtraction needed a borrow
+        // subtract one from qhat, add back one b
+        if (diff < 0) {
+            qhat--;
+            
+            carry = 0;
+            for (u32 i = 0; i < bsize; i++) {
+                u64 sum = (u64)norm_b[i] + (u64)norm_a[i + j] + carry;
+                norm_a[i + j] = (u32)(sum & BIGFLOAT_MASK);
+                carry = sum >> 32;
+            }
+            norm_a[j + bsize] += carry;
+        }
+
+        out->limbs[j] = (u32)qhat;
+    }
+
+    mga_scratch_release(scratch);
+
+    out->exp = a->exp - b->exp + 1;
+    out->size = sign * out_size;
+    _bf_fix_leading_zeros(out);
+}
 
 b32 bf_is_zero(const bigfloat* bf) {
     return ABS(bf->size) == 1 && bf->prec > 0 && bf->limbs[0] == 0;
