@@ -15,6 +15,18 @@ bigfloat bf_create(mg_arena* arena, u32 prec) {
         .limbs = MGA_PUSH_ZERO_ARRAY(arena, u32, prec)
     };
 }
+bigfloat bf_copy(mg_arena* arena, bigfloat* bf) {
+    bigfloat out = {
+        .prec = bf->prec,
+        .size = bf->size,
+        .exp = bf->exp,
+        .limbs = MGA_PUSH_ARRAY(arena, u32, bf->prec)
+    };
+
+    memcpy(out.limbs, bf->limbs, sizeof(u32) * bf->prec);
+
+    return out;
+}
 bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec) {
     bigfloat out = bf_create(arena, prec);
     bf_set_f64(&out, num);
@@ -57,20 +69,65 @@ float_parts f64_get_parts(f64 num) {
 
     return out;
 }
+// TODO: Handle denormalized numbers
+// Based on gmp extract-dbl.c
 void bf_set_f64(bigfloat* bf, f64 num) {
+    if (bf->prec < 3) {
+        // I do not want to deal with annoying cases
+        fprintf(stderr, "Must have 3 limbs of precision for doubles\n");
+        return;
+    }
+
     if (isnan(num) || isinf(num)) {
         fprintf(stderr, "Cannot set bigfloat to nan or inf\n");
+        return;
+    }
+    if (num == 0.0) {
+        bf_set_zero(bf);
         return;
     }
     
     float_parts parts = f64_get_parts(num);
     
-    i32 exp = (i32)parts.exponent - 1023;
-    u64 mantissa = parts.mantissa | ((u64)1 << 53);
+    i32 binary_exp = (i32)parts.exponent - 1023 + 1; // For the leading 1
+    u64 man = ((u64)1 << 63) | (parts.mantissa << 11);
 
-    UNUSED(bf);
-    UNUSED(exp);
-    UNUSED(mantissa);
+    u32 shift = (u32)(binary_exp + 64 * 32) % 32;
+    i32 exp = (binary_exp + 64 * 32) / 32 - 64;
+
+    if (shift != 0) {
+        bf->limbs[2] = (u32)(man >> (64 - shift));
+        bf->limbs[1] = (u32)((man >> 32) << shift) | ((man & 0xffffffff) >> (32 - shift));
+        bf->limbs[0] = (u32)((man & 0xffffffff) << shift);
+    } else {
+        bf->limbs[2] = (u32)(man >> 32);
+        bf->limbs[1] = (u32)(man & 0xffffffff);
+        bf->limbs[0] = 0;
+
+        exp--;
+    }
+
+    u32 size = 3;
+    u32 least_sig_digit = 0;
+    for (u32 i = 0; i < bf->prec; i++) {
+        if (bf->limbs[i] != 0) {
+            least_sig_digit = i;
+            break;
+        }
+    }
+
+    if (least_sig_digit != 0) {
+        //bf->exp += least_sig_digit;
+
+        size -= least_sig_digit;
+        for (u32 i = 0; i < size; i++) {
+            bf->limbs[i] = bf->limbs[i + least_sig_digit];
+        }
+    }
+
+    bf->size = parts.sign ? -(i32)size : size;
+    bf->exp = exp;
+
 }
 void bf_set_i64(bigfloat* bf, i64 num) {
     u32 abs_size = MIN(bf->prec, 2);
@@ -214,6 +271,15 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
 }
 
 void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+    if (bf_is_zero(a)) {
+        bf_set(out, b);
+        return;
+    }
+    if (bf_is_zero(b)) {
+        bf_set(out, a);
+        return;
+    }
+
     if ((a->size ^ b->size) < 0) {
         // a + (-b) = a - b
         // -a + b = -a - (-b)
@@ -771,9 +837,11 @@ static string8 _bf_to_hex_str(mg_arena* arena, const bigfloat* bf) {
 
         u32 shifts = 8;
         u32 cur_limb = *limbs;
-        while ((cur_limb & 0xf) == 0) {
-            cur_limb >>= 4;
-            shifts--;
+        if (cur_limb != 0) {
+            while ((cur_limb & 0xf) == 0) {
+                cur_limb >>= 4;
+                shifts--;
+            }
         }
 
         u32 num_decimal_limbs = MIN(abs_size, num_decimal);

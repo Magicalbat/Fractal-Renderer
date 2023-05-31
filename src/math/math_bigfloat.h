@@ -14,6 +14,7 @@ typedef struct {
 } bigfloat;
 
 bigfloat bf_create(mg_arena* arena, u32 prec);
+bigfloat bf_copy(mg_arena* arena, bigfloat* bf);
 bigfloat bf_from_f64(mg_arena* arena, f64 num, u32 prec);
 bigfloat bf_from_i64(mg_arena* arena, i64 num, u32 prec);
 bigfloat bf_from_str(mg_arena* arena, string8 str, u32 base, u32 prec);

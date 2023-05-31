@@ -5,7 +5,7 @@
 #include "math/math_bigfloat.h"
 #include "os/os_thread_pool.h"
 
-#if 1
+#if 0
 
 #ifdef PLATFORM_LINUX
 
@@ -23,7 +23,21 @@ int main(void) {
     };
     mg_arena* perm_arena = mga_create(&desc);
     
-    const char* str_a = "87943890456784328934809";
+    f64 a = 123.687453;
+    f64 b = 76841563.574456;
+    f64 c = a * b;
+
+    bigfloat bf_a = bf_from_f64(perm_arena, a, 4);
+    bigfloat bf_b = bf_from_f64(perm_arena, b, 4);
+    bigfloat bf_c = bf_create(perm_arena, 8);
+
+    bf_mul_ip(&bf_c, &bf_a, &bf_b);
+
+    printf("%f\n", c);
+    bf_print(&bf_c, 16);
+
+
+    /*const char* str_a = "87943890456784328934809";
     const char* str_b = "5678987654";
 
     u32 csize = 3;
@@ -34,22 +48,15 @@ int main(void) {
 
     bf_div_ip(&c, &a, &b);
 
-    //printf("\n------------------\n");
-    //printf("a.size: %d, b.size: %d, c.size: %d\n", a.size, b.size, c.size);
-    //printf("a.exp: %d, b.exp: %d, c.exp: %d\n\n", a.exp, b.exp, c.exp);
+    printf("\n------------------\n");
+    printf("a.size: %d, b.size: %d, c.size: %d\n", a.size, b.size, c.size);
+    printf("a.exp: %d, b.exp: %d, c.exp: %d\n\n", a.exp, b.exp, c.exp);
 
-    //printf("a: "); bf_print(&a, 16);
-    //printf("b: "); bf_print(&b, 16);
+    printf("a: "); bf_print(&a, 16);
+    printf("b: "); bf_print(&b, 16);
+    printf("c: "); bf_print(&c, 16);*/
 
-    /*printf("c limbs: [\n");
-    for (u32 i = 0; i < (u32)ABS(c.size); i++) {
-        printf("\t%u,\n", c.limbs[i]);
-    }
-    printf("]\n");*/
-    
-    printf("c: "); bf_print(&c, 16);
-
-#ifdef PLATFORM_LINUX
+/*#ifdef PLATFORM_LINUX
     
     //printf("\n------------------\n");
 
@@ -77,6 +84,7 @@ int main(void) {
     mpf_clear(gc);
 
 #endif
+*/
     
     mga_destroy(perm_arena);
 
@@ -146,29 +154,60 @@ void render_mandelbrot_section(void* void_args) {
 
     complex_bf z = {
         .r = bf_create(scratch.arena, args->complex_center->r.prec),
-        .i = bf_create(scratch.arena, args->complex_center->r.prec)
+        .i = bf_create(scratch.arena, args->complex_center->i.prec)
     };
     complex_bf c = {
         .r = bf_create(scratch.arena, z.r.prec),
-        .i = bf_create(scratch.arena, z.I.prec)
+        .i = bf_create(scratch.arena, z.i.prec)
     };
+
+    complex_bf temp = {
+        .r = bf_create(scratch.arena, z.r.prec),
+        .i = bf_create(scratch.arena, z.i.prec)
+    };
+
+    bigfloat four = bf_from_f64(scratch.arena, 4.0, 3);
     
     for (u32 y = args->start_y; y < args->start_y + args->height; y++) {
         for (u32 x = 0; x < args->img_width; x++) {
             bf_set_zero(&z.r);
             bf_set_zero(&z.i);
-            complex_bf c = {
+
+            /*complexd c = {
                 (((f64)x / (f64)args->img_width) - 0.5) * args->complex_dim.r + args->complex_center.r,
                 (((f64)y / (f64)args->img_height) - 0.5) * args->complex_dim.i + args->complex_center.i
-            };
+            };*/
+            bf_set_f64(&c.r, (f64)x / (f64)args->img_width - 0.5);
+            bf_mul_ip(&c.r, &c.r, &args->complex_dim->r);
+            bf_add_ip(&c.r, &c.r, &args->complex_center->r);
+            bf_set_f64(&c.i, (f64)y / (f64)args->img_height - 0.5);
+            bf_mul_ip(&c.i, &c.i, &args->complex_dim->i);
+            bf_add_ip(&c.i, &c.i, &args->complex_center->i);
 
             f32 n = (f32)args->iterations - 1.0;
 
             for (u32 i = 0; i < args->iterations; i++) {
-                //z = (complexd){ fabs(z.r), fabs(z.i) };
-                z = complexd_add(complexd_mul(z, z), c);
+                // z * z = (z.r * z.r - z.i * z.i, z.r * z.i + z.i * z.r);
+                //z = complexd_add(complexd_mul(z, z), c);
 
-                if (z.r * z.r + z.i * z.i > 4.0) {
+                bf_set(&temp.r, &z.r);
+                bf_set(&temp.i, &z.i);
+
+                bf_mul_ip(&z.r, &temp.r, &temp.r);
+                bf_mul_ip(&z.i, &temp.i, &temp.i);
+                bf_sub_ip(&z.r, &z.r, &z.i);
+
+                bf_mul_ip(&temp.r, &temp.r, &temp.i);
+                bf_add_ip(&z.i, &temp.r, &temp.r);
+
+                bf_add_ip(&z.r, &z.r, &c.r);
+                bf_add_ip(&z.i, &z.i, &c.i);
+
+                bf_mul_ip(&temp.r, &z.r, &z.r);
+                bf_mul_ip(&temp.i, &z.i, &z.i);
+                bf_add_ip(&temp.r, &temp.r, &temp.i);
+
+                if (bf_cmp(&temp.r, &four) > 0) {
                     n = (f32)i;
                     break;
                 }
@@ -195,21 +234,30 @@ void render_mandelbrot_section(void* void_args) {
 
 #define NUM_THREADS 8
 static thread_pool* tp = NULL;
-void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complexd complex_dim, complexd complex_center, u32 iterations) {
+void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex_bf* complex_dim, complex_bf* complex_center, u32 iterations) {
     mga_temp scratch = mga_scratch_get(NULL, 0);
 
     u32 y_step = img_height / NUM_THREADS;
     
     for (u32 i = 0; i < NUM_THREADS; i++) {
         mandelbrot_args* args = MGA_PUSH_ZERO_STRUCT(scratch.arena, mandelbrot_args);
+
+        complex_bf* temp_complex_dim = MGA_PUSH_ZERO_STRUCT(scratch.arena, complex_bf);
+        temp_complex_dim->r =  bf_copy(scratch.arena, &complex_dim->r);
+        temp_complex_dim->i =  bf_copy(scratch.arena, &complex_dim->i);
+
+        complex_bf* temp_complex_center = MGA_PUSH_ZERO_STRUCT(scratch.arena, complex_bf);
+        temp_complex_center->r =  bf_copy(scratch.arena, &complex_center->r);
+        temp_complex_center->i =  bf_copy(scratch.arena, &complex_center->i);
+
         *args = (mandelbrot_args){
             .out = out,
             .img_width = img_width,
             .img_height = img_height,
             .start_y = y_step * i,
             .height = y_step,
-            .complex_dim = complex_dim,
-            .complex_center = complex_center,
+            .complex_dim = temp_complex_dim,
+            .complex_center = temp_complex_center,
             .iterations = iterations
         };
 
@@ -264,6 +312,8 @@ static rect64 mouse_norm_rect(gfx_window* win) {
 
     return rect;
 }
+
+#define MANDEL_PREC 4
 
 int main(void) {
     mga_desc desc = {
@@ -367,11 +417,22 @@ int main(void) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
     glClearColor(0.45f, 0.65f, 0.77f, 1.0f);
 
-    complexd complex_dim = { 4.0, 4.0 * 9.0 / 16.0 };
-    complexd complex_center = { 0 };
+    complex_bf complex_dim = {
+        bf_from_f64(perm_arena, 4.0, MANDEL_PREC),
+        bf_from_f64(perm_arena, 4.0 * 9.0 / 16.0, MANDEL_PREC)
+    };
+    complex_bf complex_center = { 
+        bf_create(perm_arena, MANDEL_PREC),
+        bf_create(perm_arena, MANDEL_PREC)
+    };
+    complex_bf temp_bf = {
+        bf_create(perm_arena, MANDEL_PREC),
+        bf_create(perm_arena, MANDEL_PREC)
+    };
+
     u32 iterations = 64;
 
-    render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, iterations);
+    render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, iterations);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
 
     while (!win->should_close) {
@@ -390,16 +451,25 @@ int main(void) {
                 rect.y + rect.h * 0.5
             };
 
-            complex_center.r += (center.x - 0.5) * complex_dim.r;
-            complex_center.i += (center.y - 0.5) * complex_dim.i;
+            //complex_center.r += (center.x - 0.5) * complex_dim.r;
+            //complex_center.i += (center.y - 0.5) * complex_dim.i;
+            bf_set_f64(&temp_bf.r, center.x - 0.5);
+            bf_set_f64(&temp_bf.i, center.y - 0.5);
+            bf_mul_ip(&temp_bf.r, &temp_bf.r, &complex_dim.r);
+            bf_mul_ip(&temp_bf.i, &temp_bf.i, &complex_dim.i);
+            bf_add_ip(&complex_center.r, &temp_bf.r, &complex_center.r);
+            bf_add_ip(&complex_center.i, &temp_bf.i, &complex_center.i);
 
-            complex_dim = complexd_scale(complex_dim, rect.w);
+            bf_set_f64(&temp_bf.r, rect.w);
+            bf_mul_ip(&complex_dim.r, &complex_dim.r, &temp_bf.r);
+            bf_mul_ip(&complex_dim.i, &complex_dim.i, &temp_bf.r);
+            //complex_dim = complexd_scale(complex_dim, rect.w);
 
             iterations += 64;
             
-            printf("dim: %f %f, center: %f %f, iters: %u\n", complex_dim.r, complex_dim.i, complex_center.r, complex_center.i, iterations);
+            //printf("dim: %f %f, center: %f %f, iters: %u\n", complex_dim.r, complex_dim.i, complex_center.r, complex_center.i, iterations);
 
-            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, iterations);
+            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, iterations);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
         }
 
@@ -408,15 +478,20 @@ int main(void) {
 
             mga_temp temp = mga_temp_begin(perm_arena);
             
+            bf_set_f64(&temp_bf.r, 4.0);
+            bf_set_f64(&temp_bf.i, 1.5);
+
             u32 i = 0;
             b32 done = false;
             while (!done) {
-                if (complex_dim.r >= 4.0f)
+                if (bf_cmp(&complex_dim.r, &temp_bf.r) > 0)
                     done = true;
                 
-                render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 1024);
+                render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, 1024);
 
-                complex_dim = complexd_scale(complex_dim, 1.5);
+                //complex_dim = complexd_scale(complex_dim, 1.5);
+                bf_mul_ip(&complex_dim.r, &complex_dim.r, &temp_bf.i);
+                bf_mul_ip(&complex_dim.i, &complex_dim.i, &temp_bf.i);
                 
                 fpng_img img = {
                     .channels = 4,
@@ -445,7 +520,7 @@ int main(void) {
 
                 mga_temp_end(temp);
                 
-                printf("image %d, dim: %f %f\n", i - 1, complex_dim.r, complex_dim.i);
+                printf("image %d\n", i - 1);
             }
             i--;
 
@@ -462,7 +537,7 @@ int main(void) {
 
             printf("done saving images\n");
 
-            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, complex_dim, complex_center, 512);
+            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, 512);
             glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
             draw(win);
         }
