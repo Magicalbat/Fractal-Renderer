@@ -4,15 +4,20 @@
 #include "base/base.h"
 #include "math/math_bigfloat.h"
 #include "os/os_thread_pool.h"
+#include "math/math_complex.h"
 
 #if 0
-
-#ifdef PLATFORM_LINUX
 
 #include "gmp.h"
 #include <stdlib.h>
 
-#endif
+typedef struct {
+    bigfloat r, i;
+} bcx;
+
+typedef struct {
+    mpf_t r, i;
+} gcx;
 
 void mga_err(mga_error err);
 int main(void) {
@@ -22,70 +27,151 @@ int main(void) {
         .error_callback = mga_err
     };
     mg_arena* perm_arena = mga_create(&desc);
+
+#if 0
+
+    bigfloat a = bf_from_str(perm_arena, STR8("71b9adecd8cfab7376d1c3c4125aeed4110fc66c59cf9d1d7da0da000000000000000000000000000000000000000000000000"), 16, 8);
+    bigfloat b = bf_from_str(perm_arena, STR8("0.8cccccccccccd"), 16, 8);
+    bigfloat c = bf_create(perm_arena, 8);
+
+    bf_add(&c, &a, &b);
+
+    bf_print(&c, 16);
+
+#else 
     
-    f64 a = 123.687453;
-    f64 b = 76841563.574456;
-    f64 c = a * b;
+    complexd c = {
+        -1, -0.2
+    };
+    complexd z = { 0 };
 
-    bigfloat bf_a = bf_from_f64(perm_arena, a, 4);
-    bigfloat bf_b = bf_from_f64(perm_arena, b, 4);
-    bigfloat bf_c = bf_create(perm_arena, 8);
+    bcx bz = {
+        bf_create(perm_arena, 8),
+        bf_create(perm_arena, 8)
+    };
+    bcx bc = {
+        bf_from_f64(perm_arena, c.r, 8),
+        bf_from_f64(perm_arena, c.i, 8),
+    };
+    bcx btmp = {
+        bf_create(perm_arena, 8),
+        bf_create(perm_arena, 8)
+    };
 
-    bf_mul_ip(&bf_c, &bf_a, &bf_b);
-
-    printf("%f\n", c);
-    bf_print(&bf_c, 16);
-
-
-    /*const char* str_a = "87943890456784328934809";
-    const char* str_b = "5678987654";
-
-    u32 csize = 3;
-
-    bigfloat a = bf_from_str(perm_arena, str8_from_cstr((u8*)str_a), 16, csize);
-    bigfloat b = bf_from_str(perm_arena, str8_from_cstr((u8*)str_b), 16, csize);
-    bigfloat c = bf_create(perm_arena, csize);
-
-    bf_div_ip(&c, &a, &b);
-
-    printf("\n------------------\n");
-    printf("a.size: %d, b.size: %d, c.size: %d\n", a.size, b.size, c.size);
-    printf("a.exp: %d, b.exp: %d, c.exp: %d\n\n", a.exp, b.exp, c.exp);
-
-    printf("a: "); bf_print(&a, 16);
-    printf("b: "); bf_print(&b, 16);
-    printf("c: "); bf_print(&c, 16);*/
-
-/*#ifdef PLATFORM_LINUX
+    /*gcx gz = { 0 };
+    mpf_init_set_d(gz.r, 0);
+    mpf_init_set_d(gz.i, 0);
     
-    //printf("\n------------------\n");
+    gcx gc = { 0 };
+    mpf_init_set_d(gc.r, c.r);
+    mpf_init_set_d(gc.i, c.i);
 
-    mpf_t ga, gb, gc;
-    mpf_init2(ga, 32 * 6);
-    mpf_init2(gb, 32 * 6);
-    mpf_init2(gc, 32 * csize);
+    gcx gtmp = { 0 };
+    mpf_init_set_d(gtmp.r, 0);
+    mpf_init_set_d(gtmp.i, 0);*/
 
-    mpf_set_str(ga, str_a, 16);
-    mpf_set_str(gb, str_b, 16);
+    bigfloat p = bf_create(perm_arena, 8);
 
-    mpf_div(gc, ga, gb);
+    complexd tmp = { 0 };
+    for (u32 i = 0; i < 1; i++) {
+        bf_set(&btmp.r, &bz.r);
+        bf_set(&btmp.i, &bz.i);
+        
+        tmp.r = z.r;
+        tmp.i = z.i;
 
-    mp_exp_t exp = 0;
-    //char* a_str = mpf_get_str(NULL, &exp, 16, 64, ga);
-    //char* b_str = mpf_get_str(NULL, &exp, 16, 64, gb);
-    char* c_str = mpf_get_str(NULL, &exp, 16, 64, gc);
-    //printf("a: %s\n", a_str);
-    //printf("b: %s\n", b_str);
-    printf("c: %s\n", c_str);
+        z.r = z.r * z.r;
+        z.i = z.i * z.i;
+        z.r = z.r - z.i;
+        
+        bf_mul(&bz.r, &btmp.r, &btmp.r);
+        bf_mul(&bz.i, &btmp.i, &btmp.i);
+        bf_sub(&bz.r, &bz.r, &bz.i);
 
-    free(c_str);
-    mpf_clear(ga);
-    mpf_clear(gb);
-    mpf_clear(gc);
+        tmp.i = tmp.r * tmp.i;
+        z.i = tmp.i + tmp.i;
+        
+        bf_mul(&btmp.i, &btmp.r, &btmp.i);
+        bf_add(&bz.i, &btmp.i, &btmp.i);
+
+        z.r += c.r;
+        z.i += c.i;
+
+        bf_add(&bz.r, &bz.r, &bc.r);
+        bf_add(&bz.i, &bz.i, &bc.i);
+
+        bf_set_f64(&p, z.r);
+        printf("z.r : "); bf_print(&p, 16);
+        printf("bz.r: "); bf_print(&bz.r, 16);
+        
+        bf_set_f64(&p, z.i);
+        printf("z.i : "); bf_print(&p, 16);
+        printf("bz.i: "); bf_print(&bz.i, 16);
+        
+        printf("\n=====================================\n\n");
+    }
+
+#if 1
+    for (u32 i = 0; i < 1; i++) {
+        bf_set(&btmp.r, &bz.r);
+        bf_set(&btmp.i, &bz.i);
+        
+        tmp.r = z.r;
+        tmp.i = z.i;
+
+        z.r = z.r * z.r;
+        bf_set_f64(&p, z.r);
+        printf("1 f: "); bf_print(&p, 16);
+        z.i = z.i * z.i;
+        bf_set_f64(&p, z.i);
+        printf("2 f: "); bf_print(&p, 16);
+        z.r = z.r - z.i;
+        bf_set_f64(&p, z.r);
+        printf("3 f: "); bf_print(&p, 16);
+       
+        bf_mul(&bz.r, &btmp.r, &btmp.r);
+        printf("1 b: "); bf_print(&bz.r, 16);
+        bf_mul(&bz.i, &btmp.i, &btmp.i);
+        printf("2 b: "); bf_print(&bz.i, 16);
+        bf_sub(&bz.r, &bz.r, &bz.i);
+        printf("3 b: "); bf_print(&bz.r, 16);
+
+        printf("\n");
+
+        tmp.i = tmp.r * tmp.i;
+        bf_set_f64(&p, tmp.i);
+        printf("4 f: "); bf_print(&p, 16);
+        z.i = tmp.i + tmp.i;
+        bf_set_f64(&p, z.i);
+        printf("5 f: "); bf_print(&p, 16);
+        
+        bf_mul(&btmp.i, &btmp.r, &btmp.i);
+        printf("4 b: "); bf_print(&btmp.i, 16);
+        bf_add(&bz.i, &btmp.i, &btmp.i);
+        printf("5 b: "); bf_print(&bz.i, 16);
+        
+        printf("\n");
+        
+        z.r += c.r;
+        z.i += c.i;
+
+        bf_add(&bz.r, &bz.r, &bc.r);
+        bf_add(&bz.i, &bz.i, &bc.i);
+
+        bf_set_f64(&p, z.r);
+        printf("z.r : "); bf_print(&p, 16);
+        printf("bz.r: "); bf_print(&bz.r, 16);
+        
+        bf_set_f64(&p, z.i);
+        printf("z.i : "); bf_print(&p, 16);
+        printf("bz.i: "); bf_print(&bz.i, 16);
+
+        printf("\n=====================================\n\n");
+    }
+#endif
 
 #endif
-*/
-    
+   
     mga_destroy(perm_arena);
 
     return 0;
@@ -100,7 +186,6 @@ void mga_err(mga_error err) {
 #include "gfx/gfx.h"
 
 #include "math/math_vec.h"
-#include "math/math_complex.h"
 
 #if defined(PLATFORM_WIN32)
 #    define UNICODE
@@ -121,8 +206,8 @@ void mga_err(mga_error err) {
 #define WIDTH (u32)(320 * WIN_SCALE)
 #define HEIGHT (u32)(180 * WIN_SCALE)
 
-#define IMG_WIDTH 1920
-#define IMG_HEIGHT 1080
+#define IMG_WIDTH 640
+#define IMG_HEIGHT 360
 
 typedef struct {
     bigfloat r, i;
@@ -166,6 +251,10 @@ void render_mandelbrot_section(void* void_args) {
         .i = bf_create(scratch.arena, z.i.prec)
     };
 
+    //complexd temp_dim = {
+    //    4.0, 4.0 * 9.0 / 16.0
+    //};
+
     bigfloat four = bf_from_f64(scratch.arena, 4.0, 3);
     
     for (u32 y = args->start_y; y < args->start_y + args->height; y++) {
@@ -178,11 +267,11 @@ void render_mandelbrot_section(void* void_args) {
                 (((f64)y / (f64)args->img_height) - 0.5) * args->complex_dim.i + args->complex_center.i
             };*/
             bf_set_f64(&c.r, (f64)x / (f64)args->img_width - 0.5);
-            bf_mul_ip(&c.r, &c.r, &args->complex_dim->r);
-            bf_add_ip(&c.r, &c.r, &args->complex_center->r);
+            bf_mul(&c.r, &c.r, &args->complex_dim->r);
+            bf_add(&c.r, &c.r, &args->complex_center->r);
             bf_set_f64(&c.i, (f64)y / (f64)args->img_height - 0.5);
-            bf_mul_ip(&c.i, &c.i, &args->complex_dim->i);
-            bf_add_ip(&c.i, &c.i, &args->complex_center->i);
+            bf_mul(&c.i, &c.i, &args->complex_dim->i);
+            bf_add(&c.i, &c.i, &args->complex_center->i);
 
             f32 n = (f32)args->iterations - 1.0;
 
@@ -193,19 +282,19 @@ void render_mandelbrot_section(void* void_args) {
                 bf_set(&temp.r, &z.r);
                 bf_set(&temp.i, &z.i);
 
-                bf_mul_ip(&z.r, &temp.r, &temp.r);
-                bf_mul_ip(&z.i, &temp.i, &temp.i);
-                bf_sub_ip(&z.r, &z.r, &z.i);
+                bf_mul(&z.r, &temp.r, &temp.r);
+                bf_mul(&z.i, &temp.i, &temp.i);
+                bf_sub(&z.r, &z.r, &z.i);
 
-                bf_mul_ip(&temp.r, &temp.r, &temp.i);
-                bf_add_ip(&z.i, &temp.r, &temp.r);
+                bf_mul(&temp.r, &temp.r, &temp.i);
+                bf_add(&z.i, &temp.r, &temp.r);
 
-                bf_add_ip(&z.r, &z.r, &c.r);
-                bf_add_ip(&z.i, &z.i, &c.i);
+                bf_add(&z.r, &z.r, &c.r);
+                bf_add(&z.i, &z.i, &c.i);
 
-                bf_mul_ip(&temp.r, &z.r, &z.r);
-                bf_mul_ip(&temp.i, &z.i, &z.i);
-                bf_add_ip(&temp.r, &temp.r, &temp.i);
+                bf_mul(&temp.r, &z.r, &z.r);
+                bf_mul(&temp.i, &z.i, &z.i);
+                bf_add(&temp.r, &temp.r, &temp.i);
 
                 if (bf_cmp(&temp.r, &four) > 0) {
                     n = (f32)i;
@@ -261,17 +350,17 @@ void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex_bf* c
             .iterations = iterations
         };
 
-        //render_mandelbrot_section(args);
-        thread_pool_add_task(
+        render_mandelbrot_section(args);
+        /*thread_pool_add_task(
             tp,
             (thread_task){
                 .func = render_mandelbrot_section,
                 .arg = args
             }
-        );
+        );*/
     }
 
-    thread_pool_wait(tp);
+    //thread_pool_wait(tp);
 
     mga_scratch_release(scratch);
 }
@@ -455,14 +544,14 @@ int main(void) {
             //complex_center.i += (center.y - 0.5) * complex_dim.i;
             bf_set_f64(&temp_bf.r, center.x - 0.5);
             bf_set_f64(&temp_bf.i, center.y - 0.5);
-            bf_mul_ip(&temp_bf.r, &temp_bf.r, &complex_dim.r);
-            bf_mul_ip(&temp_bf.i, &temp_bf.i, &complex_dim.i);
-            bf_add_ip(&complex_center.r, &temp_bf.r, &complex_center.r);
-            bf_add_ip(&complex_center.i, &temp_bf.i, &complex_center.i);
+            bf_mul(&temp_bf.r, &temp_bf.r, &complex_dim.r);
+            bf_mul(&temp_bf.i, &temp_bf.i, &complex_dim.i);
+            bf_add(&complex_center.r, &temp_bf.r, &complex_center.r);
+            bf_add(&complex_center.i, &temp_bf.i, &complex_center.i);
 
             bf_set_f64(&temp_bf.r, rect.w);
-            bf_mul_ip(&complex_dim.r, &complex_dim.r, &temp_bf.r);
-            bf_mul_ip(&complex_dim.i, &complex_dim.i, &temp_bf.r);
+            bf_mul(&complex_dim.r, &complex_dim.r, &temp_bf.r);
+            bf_mul(&complex_dim.i, &complex_dim.i, &temp_bf.r);
             //complex_dim = complexd_scale(complex_dim, rect.w);
 
             iterations += 64;
@@ -490,8 +579,8 @@ int main(void) {
                 render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, 1024);
 
                 //complex_dim = complexd_scale(complex_dim, 1.5);
-                bf_mul_ip(&complex_dim.r, &complex_dim.r, &temp_bf.i);
-                bf_mul_ip(&complex_dim.i, &complex_dim.i, &temp_bf.i);
+                bf_mul(&complex_dim.r, &complex_dim.r, &temp_bf.i);
+                bf_mul(&complex_dim.i, &complex_dim.i, &temp_bf.i);
                 
                 fpng_img img = {
                     .channels = 4,

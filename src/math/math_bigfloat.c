@@ -5,7 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
-static void _bf_fix_leading_zeros(bigfloat* bf); 
+static void _bf_fix_leading_zeros(bigfloat* bf);
+static void _bf_fix_leading_zeros_no_exp(bigfloat* bf);
 
 bigfloat bf_create(mg_arena* arena, u32 prec) {
     return (bigfloat){
@@ -125,7 +126,7 @@ void bf_set_f64(bigfloat* bf, f64 num) {
         }
     }
 
-    bf->size = parts.sign ? -(i32)size : size;
+    bf->size = parts.sign ? (-(i32)size) : (i32)size;
     bf->exp = exp;
 
 }
@@ -270,7 +271,7 @@ static bigfloat _bf_from_hex_str(mg_arena* arena, string8 str, u32 prec, b32 neg
     return out;
 }
 
-void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+void bf_add(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     if (bf_is_zero(a)) {
         bf_set(out, b);
         return;
@@ -291,7 +292,7 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
             .limbs = b->limbs
         };
 
-        bf_sub_ip(out, a, &neg_b);
+        bf_sub(out, a, &neg_b);
         
         return;
     }
@@ -304,20 +305,36 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
 
     u32 asize = ABS(a->size);
     u32 bsize = ABS(b->size);
+    i32 real_bsize = bsize;
     u32* alimbs = a->limbs;
     u32* blimbs = b->limbs;
     i32 exp_diff = a->exp - b->exp;
+    i32 out_size = 0;
+    i32 prec = out->prec - 1; // the -1 prevents a memory bug during the final carry
 
     // Remove parts of a and b that go beyond out->prec
-    if (asize > out->prec) {
-        alimbs += asize - out->prec;
-        asize = out->prec;
+    if ((i32)asize > prec) {
+        alimbs += asize - prec;
+        asize = (u32)prec;
     }
     // b is somewhere to the left of a
     // exp_diff compensates for this
-    if ((i64)bsize + exp_diff > (i64)out->prec) {
-        blimbs += bsize + exp_diff - out->prec;
-        bsize = (u32)MAX(0, (i64)out->prec - exp_diff);
+    if ((i64)bsize + exp_diff > (i64)prec) {
+        blimbs += bsize + exp_diff - prec;
+        real_bsize = (i32)prec - exp_diff;
+        bsize = (u32)MAX(0, real_bsize);
+    }
+
+    mga_temp scratch = mga_scratch_get(NULL, 0);
+    if (out == a) {
+        u32* tmp_limbs = alimbs;
+        alimbs = MGA_PUSH_ARRAY(scratch.arena, u32, asize);
+        memcpy(alimbs, tmp_limbs, sizeof(u32) * asize);
+    }
+    if (out == b) {
+        u32* tmp_limbs = blimbs;
+        blimbs = MGA_PUSH_ARRAY(scratch.arena, u32, bsize);
+        memcpy(blimbs, tmp_limbs, sizeof(u32) * bsize);
     }
 
     if ((i64)asize > exp_diff) {
@@ -330,12 +347,10 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
             // aaaaa
             //   bb
 
-            out->size = asize;
+            out_size = asize;
 
             u32 copy_size = asize - exp_diff - bsize;
-            if (out != a) {
-                memcpy(out->limbs, alimbs, sizeof(u32) * copy_size);
-            }
+            memcpy(out->limbs, alimbs, sizeof(u32) * copy_size);
 
             add_out = out->limbs + copy_size; 
             alimbs += copy_size;
@@ -345,12 +360,10 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
             // aaaa
             //   bbbbb
 
-            out->size = bsize + exp_diff;
+            out_size = bsize + exp_diff;
 
             u32 copy_size = bsize + exp_diff - asize;
-            if (out != b) {
-                memcpy(out->limbs, blimbs, sizeof(u32) * copy_size);
-            }
+            memcpy(out->limbs, blimbs, sizeof(u32) * copy_size);
 
             add_out = out->limbs + copy_size;
             blimbs += copy_size;
@@ -360,7 +373,7 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
 
         u32 carry = 0;
         for (u32 i = 0; i < bsize; i++) {
-            u64 sum = (u64)alimbs[i] + blimbs[i];
+            u64 sum = (u64)alimbs[i] + blimbs[i] + carry;
 
             add_out[i] = (u32)(sum & BIGFLOAT_MASK);
             carry = (u32)(sum >> 32);
@@ -372,31 +385,33 @@ void bf_add_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
             carry = (u32)(sum >> 32);
         }
 
-        out->limbs[out->size] = carry;
-        out->size += carry;
+        out->limbs[out_size] = carry;
+        out_size += carry;
         out->exp += carry;
     } else {
         // a and b do not overlap
         // aaa
         //     bb
 
-        if (out != b) {
-            memcpy(out->limbs, blimbs, sizeof(u32) * bsize);
+        memcpy(out->limbs, blimbs, sizeof(u32) * bsize);
+        
+        if (real_bsize < 0) {
+            memset(out->limbs, 0, sizeof(u32) * (exp_diff - asize + real_bsize));
+        } else {
+            memset(out->limbs + real_bsize, 0, sizeof(u32) * (exp_diff - asize));
         }
         
-        memset(out->limbs + bsize, 0, sizeof(u32) * (exp_diff - asize));
-        
-        if (out != a) {
-            memcpy(out->limbs + bsize + exp_diff - asize, alimbs, sizeof(u32) * asize);
-        }
+        memcpy(out->limbs + real_bsize + exp_diff - asize, alimbs, sizeof(u32) * asize);
 
-        out->size = bsize + exp_diff;
+        out_size = real_bsize + exp_diff;
         out->exp = a->exp;
     }
 
-    out->size *= SIGN(a->size);
+    mga_scratch_release(scratch);
+    
+    out->size = a->size < 0 ? -out_size : out_size;
 }
-void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+void bf_sub(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     if ((a->size ^ b->size) < 0) {
         // a and b hav different signs
 
@@ -410,7 +425,7 @@ void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
             .limbs = b->limbs
         };
 
-        bf_add_ip(out, a, &neg_b);
+        bf_add(out, a, &neg_b);
         
         return;
     }
@@ -427,9 +442,15 @@ void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
 
     u32 asize = ABS(a->size);
     u32 bsize = ABS(b->size);
+    i32 real_bsize = bsize;
     u32* alimbs = a->limbs;
     u32* blimbs = b->limbs;
     i32 exp_diff = a->exp - b->exp;
+    
+    out->exp = a->exp;
+
+    // TODO: weird cases
+    // https://github.com/ryepdx/gmp/blob/master/mpf/sub.c
 
     // Remove parts of a and b that extend beyond prec
     if (asize > out->prec) {
@@ -439,7 +460,9 @@ void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
 
     if (bsize + exp_diff > out->prec) {
         blimbs += (bsize + exp_diff) - out->prec;
-        bsize = MAX(0, (i64)out->prec - exp_diff);
+        
+        real_bsize = (i32)out->prec - exp_diff;
+        bsize = MAX(0, real_bsize);
     }
 
     if (exp_diff > (i64)out->prec) {
@@ -453,15 +476,30 @@ void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
 
         return;
     }
+    
+    mga_temp scratch = mga_scratch_get(NULL, 0);
+    if (out == a) {
+        u32* tmp_limbs = alimbs;
+        alimbs = MGA_PUSH_ARRAY(scratch.arena, u32, asize);
+        memcpy(alimbs, tmp_limbs, sizeof(u32) * asize);
+    }
+    if (out == b) {
+        u32* tmp_limbs = blimbs;
+        blimbs = MGA_PUSH_ARRAY(scratch.arena, u32, bsize);
+        memcpy(blimbs, tmp_limbs, sizeof(u32) * bsize);
+    }
 
-    out->exp = a->exp;
     if ((i64)asize > exp_diff) {
         // a and b partially overlap
 
         u32* sub_out = out->limbs;
 
         if (exp_diff == 0) {
-            if (bf_cmp(a, b) < 0) {
+            bigfloat abs_a = *a;
+            bigfloat abs_b = *b;
+            abs_a.size = ABS(a->size);
+            abs_b.size = ABS(b->size);
+            if (bf_cmp(&abs_a, &abs_b) < 0) {
                 u32 temp_asize = asize;
                 asize = bsize;
                 bsize = temp_asize;
@@ -503,9 +541,7 @@ void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
                 out->size = asize;
     
                 u32 copy_size = asize - bsize;
-                if (out != a) {
-                    memcpy(out->limbs, alimbs, sizeof(u32) * copy_size);
-                }
+                memcpy(out->limbs, alimbs, sizeof(u32) * copy_size);
                 
                 sub_out += copy_size;
                 alimbs += copy_size;
@@ -529,9 +565,7 @@ void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
                 out->size = asize;
 
                 u32 copy_size = asize - (bsize + exp_diff);
-                if (out != a) {
-                    memcpy(sub_out, alimbs, sizeof(u32) * copy_size);
-                }
+                memcpy(sub_out, alimbs, sizeof(u32) * copy_size);
 
                 sub_out += copy_size;
                 alimbs += copy_size;
@@ -571,12 +605,48 @@ void bf_sub_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
         }
     } else {
         // a and b do not overlap
+        // aaaa
+        //      bbb
+
+        u32 borrow = 0;
+        for (u32 i = 0; i < bsize; i++) {
+            i64 diff = -(i64)blimbs[i] - borrow;
+
+            out->limbs[i] = (u32)diff;
+            borrow = diff < 0;
+        }
+
+        u32 size = exp_diff - asize;
+        if (real_bsize < 0) {
+            size += real_bsize;
+        }
+
+        for (u32 i = 0; i < size; i++) {
+            out->limbs[i + bsize] = (u32)(-(i64)borrow);
+        }
+
+        for (u32 i = 0; i < asize; i++) {
+            i64 diff = (i64)alimbs[i] - borrow;
+
+            out->limbs[i + size] = (u32)diff;
+            borrow = diff < 0;
+        }
+
+        out->size = real_bsize + exp_diff;
     }
 
-    _bf_fix_leading_zeros(out);
+    while (out->size > 1 && out->limbs[out->size - 1] == 0) {
+        out->size--;
+        out->exp--;
+    }
+
+    mga_scratch_release(scratch);
+
+    _bf_fix_leading_zeros_no_exp(out);
+    
     out->size *= sign;
 }
-void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+void bf_mul(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     if (bf_is_zero(a) || bf_is_zero(b)) {
         out->size = 1;
         out->exp = 0;
@@ -631,7 +701,19 @@ void bf_mul_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     out->exp = a->exp + b->exp + !adjust;
     out->size *= sign;
 
-    //_bf_fix_leading_zeros(out);
+    _bf_fix_leading_zeros_no_exp(out);
+
+    b32 is_zero = true;
+    for (u32 i = 0; i < out_size; i++) {
+        if (out->limbs[i] != 0) {
+            is_zero = false;
+            break;
+        }
+    }
+
+    if (is_zero) {
+        bf_set_zero(out);
+    }
 }
 static u32 _u32_leading_zeros(u32 x) {
 #ifdef __GNUC__
@@ -648,7 +730,7 @@ static u32 _u32_leading_zeros(u32 x) {
     return n - x;
 #endif
 }
-void bf_div_ip(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+void bf_div(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     if (out->prec < 2) {
         // I cannot be bothered to make this work 
         fprintf(stderr, "Cannot divide to output with prec less that 2\n");
@@ -890,6 +972,7 @@ static string8 _bf_to_hex_str(mg_arena* arena, const bigfloat* bf) {
     }
 
     u64 out_size = integer_str.size + decimal_str.size + (decimal_str.size != 0) + (bf->size < 0);
+
     string8 out = {
         .size = out_size,
         .str = MGA_PUSH_ZERO_ARRAY(arena, u8, out_size)
@@ -926,8 +1009,9 @@ void bf_print(const bigfloat* bf, u32 base) {
 }
 
 static void _bf_fix_leading_zeros(bigfloat* bf) {
+    u32 abs_size = ABS(bf->size);
     u32 least_sig_digit = 0;
-    for (u32 i = 0; i < bf->prec; i++) {
+    for (u32 i = 0; i < abs_size; i++) {
         if (bf->limbs[i] != 0) {
             least_sig_digit = i;
             break;
@@ -939,7 +1023,30 @@ static void _bf_fix_leading_zeros(bigfloat* bf) {
     }
 
     bf->exp += least_sig_digit;
-    u32 abs_size = ABS(bf->size) - least_sig_digit;
+    abs_size -= least_sig_digit;
+
+    for (u32 i = 0; i < abs_size; i++) {
+        bf->limbs[i] = bf->limbs[i + least_sig_digit];
+    }
+
+    bf->size = abs_size * SIGN(bf->size);
+}
+
+static void _bf_fix_leading_zeros_no_exp(bigfloat* bf) {
+    u32 abs_size = ABS(bf->size);
+    u32 least_sig_digit = 0;
+    for (u32 i = 0; i < abs_size; i++) {
+        if (bf->limbs[i] != 0) {
+            least_sig_digit = i;
+            break;
+        }
+    }
+
+    if (least_sig_digit == 0) {
+        return;
+    }
+
+    abs_size -= least_sig_digit;
 
     for (u32 i = 0; i < abs_size; i++) {
         bf->limbs[i] = bf->limbs[i + least_sig_digit];
