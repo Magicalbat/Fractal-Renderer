@@ -30,18 +30,21 @@ int main(void) {
 
 #if 0
 
-    bigfloat a = bf_from_str(perm_arena, STR8("71b9adecd8cfab7376d1c3c4125aeed4110fc66c59cf9d1d7da0da000000000000000000000000000000000000000000000000"), 16, 8);
-    bigfloat b = bf_from_str(perm_arena, STR8("0.8cccccccccccd"), 16, 8);
-    bigfloat c = bf_create(perm_arena, 8);
+    bigfloat a = bf_from_str(perm_arena, STR8("0.f5c28f5c28f5c23d70a3d70a"), 16, 8);
+    bigfloat b = bf_from_f64(perm_arena, -1.0, 8);
 
-    bf_add(&c, &a, &b);
+    //bigfloat correct_ret = bf_from_str(perm_arena, STR8("-0.0a3d70a3d70a4"), 16, 8);
 
-    bf_print(&c, 16);
+    a.limbs[3] = 4123468604;
+
+    bf_add(&a, &a, &b);
+
+    bf_print(&a, 16);
 
 #else 
     
     complexd c = {
-        -1, -0.2
+        0.1, 0
     };
     complexd z = { 0 };
 

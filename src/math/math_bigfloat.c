@@ -412,6 +412,18 @@ void bf_add(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     out->size = a->size < 0 ? -out_size : out_size;
 }
 void bf_sub(bigfloat* out, const bigfloat* a, const bigfloat* b) {
+    if (bf_is_zero(a)) {
+        bf_set(out, b);
+        out->size *= -1;
+        
+        return;
+    }
+    if (bf_is_zero(b)) {
+        bf_set(out, a);
+        
+        return;
+    }
+    
     if ((a->size ^ b->size) < 0) {
         // a and b hav different signs
 
@@ -447,10 +459,7 @@ void bf_sub(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     u32* blimbs = b->limbs;
     i32 exp_diff = a->exp - b->exp;
     
-    out->exp = a->exp;
-
-    // TODO: weird cases
-    // https://github.com/ryepdx/gmp/blob/master/mpf/sub.c
+    i32 exp = a->exp;
 
     // Remove parts of a and b that extend beyond prec
     if (asize > out->prec) {
@@ -472,7 +481,7 @@ void bf_sub(bigfloat* out, const bigfloat* a, const bigfloat* b) {
             memcpy(out->limbs, alimbs, sizeof(u32) * asize);
         }
         out->size = asize * sign;
-        out->exp = a->exp;
+        out->exp = exp;
 
         return;
     }
@@ -607,6 +616,9 @@ void bf_sub(bigfloat* out, const bigfloat* a, const bigfloat* b) {
         // a and b do not overlap
         // aaaa
         //      bbb
+        
+        out->size = real_bsize + exp_diff;
+        memset(out->limbs, 0, sizeof(u32) * out->size);
 
         u32 borrow = 0;
         for (u32 i = 0; i < bsize; i++) {
@@ -631,20 +643,19 @@ void bf_sub(bigfloat* out, const bigfloat* a, const bigfloat* b) {
             out->limbs[i + size] = (u32)diff;
             borrow = diff < 0;
         }
-
-        out->size = real_bsize + exp_diff;
     }
 
     while (out->size > 1 && out->limbs[out->size - 1] == 0) {
         out->size--;
-        out->exp--;
+        exp--;
     }
 
     mga_scratch_release(scratch);
 
-    _bf_fix_leading_zeros_no_exp(out);
-    
     out->size *= sign;
+    out->exp = exp;
+    
+    _bf_fix_leading_zeros_no_exp(out);
 }
 void bf_mul(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     if (bf_is_zero(a) || bf_is_zero(b)) {
@@ -1008,6 +1019,7 @@ void bf_print(const bigfloat* bf, u32 base) {
     mga_scratch_release(scratch);
 }
 
+// TODO: signs not working?
 static void _bf_fix_leading_zeros(bigfloat* bf) {
     u32 abs_size = ABS(bf->size);
     u32 least_sig_digit = 0;

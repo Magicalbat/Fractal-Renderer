@@ -5,6 +5,7 @@
 
 #define BIGFLOAT_BASE ((u64)1 << 32)
 #define BIGFLOAT_MASK (BIGFLOAT_BASE - 1)
+#define BIGFLOAT_MAX_LIMB BIGFLOAT_MASK
 
 typedef struct {
     u32 prec; // number of digits
