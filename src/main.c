@@ -28,18 +28,22 @@ int main(void) {
     };
     mg_arena* perm_arena = mga_create(&desc);
 
-#if 0
+#if 1
 
-    bigfloat a = bf_from_str(perm_arena, STR8("0.f5c28f5c28f5c23d70a3d70a"), 16, 8);
-    bigfloat b = bf_from_f64(perm_arena, -1.0, 8);
+    /*
+        tmp.r: 0.0055e1c71c71c718de38e38e38e38
+        cc.r: -1.c1eac71c71c716e3
+        cc.r: -4ff7392.04ff73920555555921c71c72
+    */
+
+    bigfloat a = bf_from_str(perm_arena, STR8("0.0055e1c71c71c718de38e38e38e38"), 16, 4);
+    bigfloat b = bf_from_str(perm_arena, STR8("-1.c1eac71c71c716e3"), 16, 4);
 
     //bigfloat correct_ret = bf_from_str(perm_arena, STR8("-0.0a3d70a3d70a4"), 16, 8);
 
-    a.limbs[3] = 4123468604;
+    bf_add(&b, &a, &b);
 
-    bf_add(&a, &a, &b);
-
-    bf_print(&a, 16);
+    bf_print(&b, 16);
 
 #else 
     
@@ -209,8 +213,8 @@ void mga_err(mga_error err) {
 #define WIDTH (u32)(320 * WIN_SCALE)
 #define HEIGHT (u32)(180 * WIN_SCALE)
 
-#define IMG_WIDTH 640
-#define IMG_HEIGHT 360
+#define IMG_WIDTH 1920
+#define IMG_HEIGHT 1080
 
 typedef struct {
     bigfloat r, i;
@@ -324,7 +328,7 @@ void render_mandelbrot_section(void* void_args) {
     mga_temp_end(scratch);
 }
 
-#define NUM_THREADS 8
+#define NUM_THREADS 12
 static thread_pool* tp = NULL;
 void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex_bf* complex_dim, complex_bf* complex_center, u32 iterations) {
     mga_temp scratch = mga_scratch_get(NULL, 0);
@@ -353,17 +357,17 @@ void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex_bf* c
             .iterations = iterations
         };
 
-        render_mandelbrot_section(args);
-        /*thread_pool_add_task(
+        //render_mandelbrot_section(args);
+        thread_pool_add_task(
             tp,
             (thread_task){
                 .func = render_mandelbrot_section,
                 .arg = args
             }
-        );*/
+        );
     }
 
-    //thread_pool_wait(tp);
+    thread_pool_wait(tp);
 
     mga_scratch_release(scratch);
 }
@@ -522,6 +526,9 @@ int main(void) {
         bf_create(perm_arena, MANDEL_PREC)
     };
 
+    complexd cd = { 4.0, 4.0 * 9.0 / 16.0 };
+    complexd cc = { 0, 0 };
+
     u32 iterations = 64;
 
     render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, iterations);
@@ -543,21 +550,40 @@ int main(void) {
                 rect.y + rect.h * 0.5
             };
 
-            //complex_center.r += (center.x - 0.5) * complex_dim.r;
-            //complex_center.i += (center.y - 0.5) * complex_dim.i;
+            cc.r += (center.x - 0.5) * cd.r;
+            cc.i += (center.y - 0.5) * cd.i;
+
             bf_set_f64(&temp_bf.r, center.x - 0.5);
             bf_set_f64(&temp_bf.i, center.y - 0.5);
+
             bf_mul(&temp_bf.r, &temp_bf.r, &complex_dim.r);
             bf_mul(&temp_bf.i, &temp_bf.i, &complex_dim.i);
+
             bf_add(&complex_center.r, &temp_bf.r, &complex_center.r);
             bf_add(&complex_center.i, &temp_bf.i, &complex_center.i);
 
             bf_set_f64(&temp_bf.r, rect.w);
             bf_mul(&complex_dim.r, &complex_dim.r, &temp_bf.r);
             bf_mul(&complex_dim.i, &complex_dim.i, &temp_bf.r);
-            //complex_dim = complexd_scale(complex_dim, rect.w);
+
+            cd = complexd_scale(cd, rect.w);
 
             iterations += 64;
+
+            bf_set_f64(&temp_bf.r, cc.r);
+            bf_set_f64(&temp_bf.i, cc.i);
+
+            /*printf("center: [\n\t");
+            bf_print(&temp_bf.r, 16);
+            printf("\t");
+            bf_print(&temp_bf.i, 16);
+            printf("]\n\n");
+
+            printf("center: [\n\t");
+            bf_print(&complex_center.r, 16);
+            printf("\t");
+            bf_print(&complex_center.i, 16);
+            printf("]\n\n=============================\n\n");*/
             
             //printf("dim: %f %f, center: %f %f, iters: %u\n", complex_dim.r, complex_dim.i, complex_center.r, complex_center.i, iterations);
 

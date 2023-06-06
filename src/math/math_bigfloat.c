@@ -326,12 +326,12 @@ void bf_add(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     }
 
     mga_temp scratch = mga_scratch_get(NULL, 0);
-    if (out == a) {
+    if (out->limbs == a->limbs) {
         u32* tmp_limbs = alimbs;
         alimbs = MGA_PUSH_ARRAY(scratch.arena, u32, asize);
         memcpy(alimbs, tmp_limbs, sizeof(u32) * asize);
     }
-    if (out == b) {
+    if (out->limbs == b->limbs) {
         u32* tmp_limbs = blimbs;
         blimbs = MGA_PUSH_ARRAY(scratch.arena, u32, bsize);
         memcpy(blimbs, tmp_limbs, sizeof(u32) * bsize);
@@ -487,12 +487,13 @@ void bf_sub(bigfloat* out, const bigfloat* a, const bigfloat* b) {
     }
     
     mga_temp scratch = mga_scratch_get(NULL, 0);
-    if (out == a) {
+    
+    if (out->limbs == a->limbs) {
         u32* tmp_limbs = alimbs;
         alimbs = MGA_PUSH_ARRAY(scratch.arena, u32, asize);
         memcpy(alimbs, tmp_limbs, sizeof(u32) * asize);
     }
-    if (out == b) {
+    if (out->limbs == b->limbs) {
         u32* tmp_limbs = blimbs;
         blimbs = MGA_PUSH_ARRAY(scratch.arena, u32, bsize);
         memcpy(blimbs, tmp_limbs, sizeof(u32) * bsize);

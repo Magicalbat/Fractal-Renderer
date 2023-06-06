@@ -27,7 +27,7 @@ project "Fractal-Renderer"
     architecture "x64"
     toolset "clang"
 
-    filter { "action:*gmake*" } 
+    --filter { "action:*gmake*" } 
         buildoptions { "-msse4.1 -mpclmul" }
 
     filter "system:linux"
