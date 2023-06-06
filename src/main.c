@@ -6,190 +6,6 @@
 #include "os/os_thread_pool.h"
 #include "math/math_complex.h"
 
-#if 0
-
-#include "gmp.h"
-#include <stdlib.h>
-
-typedef struct {
-    bigfloat r, i;
-} bcx;
-
-typedef struct {
-    mpf_t r, i;
-} gcx;
-
-void mga_err(mga_error err);
-int main(void) {
-    mga_desc desc = {
-        .desired_max_size = MGA_MiB(16),
-        .desired_block_size = MGA_KiB(256),
-        .error_callback = mga_err
-    };
-    mg_arena* perm_arena = mga_create(&desc);
-
-#if 1
-
-    /*
-        tmp.r: 0.0055e1c71c71c718de38e38e38e38
-        cc.r: -1.c1eac71c71c716e3
-        cc.r: -4ff7392.04ff73920555555921c71c72
-    */
-
-    bigfloat a = bf_from_str(perm_arena, STR8("0.0055e1c71c71c718de38e38e38e38"), 16, 4);
-    bigfloat b = bf_from_str(perm_arena, STR8("-1.c1eac71c71c716e3"), 16, 4);
-
-    //bigfloat correct_ret = bf_from_str(perm_arena, STR8("-0.0a3d70a3d70a4"), 16, 8);
-
-    bf_add(&b, &a, &b);
-
-    bf_print(&b, 16);
-
-#else 
-    
-    complexd c = {
-        0.1, 0
-    };
-    complexd z = { 0 };
-
-    bcx bz = {
-        bf_create(perm_arena, 8),
-        bf_create(perm_arena, 8)
-    };
-    bcx bc = {
-        bf_from_f64(perm_arena, c.r, 8),
-        bf_from_f64(perm_arena, c.i, 8),
-    };
-    bcx btmp = {
-        bf_create(perm_arena, 8),
-        bf_create(perm_arena, 8)
-    };
-
-    /*gcx gz = { 0 };
-    mpf_init_set_d(gz.r, 0);
-    mpf_init_set_d(gz.i, 0);
-    
-    gcx gc = { 0 };
-    mpf_init_set_d(gc.r, c.r);
-    mpf_init_set_d(gc.i, c.i);
-
-    gcx gtmp = { 0 };
-    mpf_init_set_d(gtmp.r, 0);
-    mpf_init_set_d(gtmp.i, 0);*/
-
-    bigfloat p = bf_create(perm_arena, 8);
-
-    complexd tmp = { 0 };
-    for (u32 i = 0; i < 1; i++) {
-        bf_set(&btmp.r, &bz.r);
-        bf_set(&btmp.i, &bz.i);
-        
-        tmp.r = z.r;
-        tmp.i = z.i;
-
-        z.r = z.r * z.r;
-        z.i = z.i * z.i;
-        z.r = z.r - z.i;
-        
-        bf_mul(&bz.r, &btmp.r, &btmp.r);
-        bf_mul(&bz.i, &btmp.i, &btmp.i);
-        bf_sub(&bz.r, &bz.r, &bz.i);
-
-        tmp.i = tmp.r * tmp.i;
-        z.i = tmp.i + tmp.i;
-        
-        bf_mul(&btmp.i, &btmp.r, &btmp.i);
-        bf_add(&bz.i, &btmp.i, &btmp.i);
-
-        z.r += c.r;
-        z.i += c.i;
-
-        bf_add(&bz.r, &bz.r, &bc.r);
-        bf_add(&bz.i, &bz.i, &bc.i);
-
-        bf_set_f64(&p, z.r);
-        printf("z.r : "); bf_print(&p, 16);
-        printf("bz.r: "); bf_print(&bz.r, 16);
-        
-        bf_set_f64(&p, z.i);
-        printf("z.i : "); bf_print(&p, 16);
-        printf("bz.i: "); bf_print(&bz.i, 16);
-        
-        printf("\n=====================================\n\n");
-    }
-
-#if 1
-    for (u32 i = 0; i < 1; i++) {
-        bf_set(&btmp.r, &bz.r);
-        bf_set(&btmp.i, &bz.i);
-        
-        tmp.r = z.r;
-        tmp.i = z.i;
-
-        z.r = z.r * z.r;
-        bf_set_f64(&p, z.r);
-        printf("1 f: "); bf_print(&p, 16);
-        z.i = z.i * z.i;
-        bf_set_f64(&p, z.i);
-        printf("2 f: "); bf_print(&p, 16);
-        z.r = z.r - z.i;
-        bf_set_f64(&p, z.r);
-        printf("3 f: "); bf_print(&p, 16);
-       
-        bf_mul(&bz.r, &btmp.r, &btmp.r);
-        printf("1 b: "); bf_print(&bz.r, 16);
-        bf_mul(&bz.i, &btmp.i, &btmp.i);
-        printf("2 b: "); bf_print(&bz.i, 16);
-        bf_sub(&bz.r, &bz.r, &bz.i);
-        printf("3 b: "); bf_print(&bz.r, 16);
-
-        printf("\n");
-
-        tmp.i = tmp.r * tmp.i;
-        bf_set_f64(&p, tmp.i);
-        printf("4 f: "); bf_print(&p, 16);
-        z.i = tmp.i + tmp.i;
-        bf_set_f64(&p, z.i);
-        printf("5 f: "); bf_print(&p, 16);
-        
-        bf_mul(&btmp.i, &btmp.r, &btmp.i);
-        printf("4 b: "); bf_print(&btmp.i, 16);
-        bf_add(&bz.i, &btmp.i, &btmp.i);
-        printf("5 b: "); bf_print(&bz.i, 16);
-        
-        printf("\n");
-        
-        z.r += c.r;
-        z.i += c.i;
-
-        bf_add(&bz.r, &bz.r, &bc.r);
-        bf_add(&bz.i, &bz.i, &bc.i);
-
-        bf_set_f64(&p, z.r);
-        printf("z.r : "); bf_print(&p, 16);
-        printf("bz.r: "); bf_print(&bz.r, 16);
-        
-        bf_set_f64(&p, z.i);
-        printf("z.i : "); bf_print(&p, 16);
-        printf("bz.i: "); bf_print(&bz.i, 16);
-
-        printf("\n=====================================\n\n");
-    }
-#endif
-
-#endif
-   
-    mga_destroy(perm_arena);
-
-    return 0;
-}
-
-void mga_err(mga_error err) {
-    printf("MGA ERROR %d: %s", err.code, err.msg);
-}
-
-#else
-
 #include "gfx/gfx.h"
 
 #include "math/math_vec.h"
@@ -213,8 +29,11 @@ void mga_err(mga_error err) {
 #define WIDTH (u32)(320 * WIN_SCALE)
 #define HEIGHT (u32)(180 * WIN_SCALE)
 
-#define IMG_WIDTH 1920
-#define IMG_HEIGHT 1080
+#define PREVIEW_WIDTH 320
+#define PREVIEW_HEIGHT 180
+
+#define IMG_WIDTH 1280
+#define IMG_HEIGHT 720
 
 typedef struct {
     bigfloat r, i;
@@ -372,7 +191,7 @@ void render_mandelbrot(pixel8* out, u32 img_width, u32 img_height, complex_bf* c
     mga_scratch_release(scratch);
 }
 
-void draw(gfx_window* win);
+void draw(gfx_window* win, b32 preview);
 
 void mga_err(mga_error err) {
     printf("MGA ERROR %d: %s", err.code, err.msg);
@@ -380,7 +199,7 @@ void mga_err(mga_error err) {
 
 static u32 vertex_buffer, vertex_array;
 static struct {
-    u32 shader, texture;
+    u32 shader, texture, uv_scale_loc;
 } gl_fract = { 0 };
 static struct {
     u32 shader, scale_loc, offset_loc;
@@ -425,18 +244,24 @@ int main(void) {
 
     tp = thread_pool_create(perm_arena, NUM_THREADS, 128);
 
-    pixel8* screen = MGA_PUSH_ZERO_ARRAY(perm_arena, pixel8, IMG_WIDTH * IMG_HEIGHT);
+    pixel8* preview_screen = MGA_PUSH_ZERO_ARRAY(perm_arena, pixel8, PREVIEW_WIDTH * PREVIEW_HEIGHT);
+    for (u32 i = 0; i < PREVIEW_WIDTH * PREVIEW_HEIGHT; i++) {
+        preview_screen[i].a = 255;
+    }
+    
+    pixel8* image_screen = MGA_PUSH_ZERO_ARRAY(perm_arena, pixel8, IMG_WIDTH * IMG_HEIGHT);
     for (u32 i = 0; i < IMG_WIDTH * IMG_HEIGHT; i++) {
-        screen[i].a = 255;
+        image_screen[i].a = 255;
     }
 
     const char* fract_vert_source = ""
         "#version 330 core\n"
         "layout (location = 0) in vec2 a_pos;"
         "layout (location = 1) in vec2 a_uv;"
+        "uniform float u_uv_scale;"
         "out vec2 uv;"
         "void main() {"
-        "   uv = a_uv;"
+        "   uv = a_uv * u_uv_scale;"
         "   gl_Position = vec4(a_pos, 0, 1);"
         "}";
     const char* fract_frag_source = ""
@@ -494,6 +319,7 @@ int main(void) {
     );
     
     gl_fract.shader = glh_create_shader(fract_vert_source, fract_frag_source);
+    gl_fract.uv_scale_loc = glGetUniformLocation(gl_fract.shader, "u_uv_scale");
     
     gl_rect.shader = glh_create_shader(rect_vert_source, rect_frag_source);
     gl_rect.scale_loc = glGetUniformLocation(gl_rect.shader, "u_scale");
@@ -513,6 +339,17 @@ int main(void) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  
     glClearColor(0.45f, 0.65f, 0.77f, 1.0f);
 
+    /*
+    dim: [
+        0.0000000000000000000000bff42ffd83fa5e71fabf59fddd
+        0.00000000000000000000006bf95afe9a3cd5201d0ba29eb8
+    ]
+    center: [
+        -0.d26a900731f23c1b69a6c73cc226fa51
+        -0.332e34bca4b23cb93d02dd286b91481f
+    ]
+    */
+
     complex_bf complex_dim = {
         bf_from_f64(perm_arena, 4.0, MANDEL_PREC),
         bf_from_f64(perm_arena, 4.0 * 9.0 / 16.0, MANDEL_PREC)
@@ -531,8 +368,9 @@ int main(void) {
 
     u32 iterations = 64;
 
-    render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, iterations);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
+    render_mandelbrot(preview_screen, PREVIEW_WIDTH, PREVIEW_HEIGHT, &complex_dim, &complex_center, iterations);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, preview_screen);
+    glUniform1f(gl_fract.uv_scale_loc, (f32)PREVIEW_WIDTH / IMG_WIDTH);
 
     while (!win->should_close) {
         gfx_win_process_events(win);
@@ -572,23 +410,23 @@ int main(void) {
 
             bf_set_f64(&temp_bf.r, cc.r);
             bf_set_f64(&temp_bf.i, cc.i);
-
-            /*printf("center: [\n\t");
-            bf_print(&temp_bf.r, 16);
+            
+            printf("dim: [\n\t");
+            bf_print(&complex_dim.r, 16);
             printf("\t");
-            bf_print(&temp_bf.i, 16);
-            printf("]\n\n");
+            bf_print(&complex_dim.i, 16);
+            printf("]\n");
 
             printf("center: [\n\t");
             bf_print(&complex_center.r, 16);
             printf("\t");
             bf_print(&complex_center.i, 16);
-            printf("]\n\n=============================\n\n");*/
+            printf("]\n\n=============================\n\n");
             
             //printf("dim: %f %f, center: %f %f, iters: %u\n", complex_dim.r, complex_dim.i, complex_center.r, complex_center.i, iterations);
 
-            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, iterations);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
+            render_mandelbrot(preview_screen, PREVIEW_WIDTH, PREVIEW_HEIGHT, &complex_dim, &complex_center, iterations);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, preview_screen);
         }
 
         if (win->mouse_buttons[2] && !win->prev_mouse_buttons[2]) {
@@ -605,7 +443,7 @@ int main(void) {
                 if (bf_cmp(&complex_dim.r, &temp_bf.r) > 0)
                     done = true;
                 
-                render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, 1024);
+                render_mandelbrot(image_screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, 1024);
 
                 //complex_dim = complexd_scale(complex_dim, 1.5);
                 bf_mul(&complex_dim.r, &complex_dim.r, &temp_bf.i);
@@ -615,7 +453,7 @@ int main(void) {
                     .channels = 4,
                     .width = IMG_WIDTH,
                     .height = IMG_HEIGHT,
-                    .data = (u8*)screen
+                    .data = (u8*)image_screen
                 };
                 string8 out = { 0 };
                 fpng_encode_image_to_memory(perm_arena, &img, &out, 0);
@@ -633,8 +471,8 @@ int main(void) {
                 fwrite(out.str, 1, out.size, f);
                 fclose(f);
                 
-                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
-                draw(win);
+                glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, image_screen);
+                draw(win, false);
 
                 mga_temp_end(temp);
                 
@@ -655,12 +493,12 @@ int main(void) {
 
             printf("done saving images\n");
 
-            render_mandelbrot(screen, IMG_WIDTH, IMG_HEIGHT, &complex_dim, &complex_center, 512);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, IMG_WIDTH, IMG_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screen);
-            draw(win);
+            render_mandelbrot(preview_screen, PREVIEW_WIDTH, PREVIEW_HEIGHT, &complex_dim, &complex_center, 512);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, preview_screen);
+            draw(win, true);
         }
 
-        draw(win);
+        draw(win, true);
         
         #if defined(PLATFORM_WIN32)
             Sleep(16);
@@ -683,10 +521,15 @@ int main(void) {
     return 0;
 }
 
-void draw(gfx_window* win) {
+void draw(gfx_window* win, b32 preview) {
     gfx_win_clear(win);
 
     glUseProgram(gl_fract.shader);
+    if (preview)
+        glUniform1f(gl_fract.uv_scale_loc, (f32)PREVIEW_WIDTH / IMG_WIDTH);
+    else
+        glUniform1f(gl_fract.uv_scale_loc, 1.0f);
+    
     glBindVertexArray(vertex_array);
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
 
@@ -724,4 +567,3 @@ void draw(gfx_window* win) {
 
     gfx_win_swap_buffers(win);
 }
-#endif
